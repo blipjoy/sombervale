@@ -1,0 +1,14 @@
+[package]
+name = "sombervale"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+env_logger = "0.9"
+getrandom = "0.2"
+log = "0.4"
+pcx = "0.2"
+pixels = "0.5"
+randomize = "3.0"
+winit = "0.25"
+winit_input_helper = "0.10"
