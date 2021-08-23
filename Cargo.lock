@@ -1371,6 +1371,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "shipyard"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e11cc62cd057b711c0229c2bd07130e2fd9483c9022ac8711537a00d572d3056"
+dependencies = [
+ "hashbrown 0.9.1",
+ "parking_lot",
+]
+
+[[package]]
 name = "slotmap"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1405,12 +1415,15 @@ dependencies = [
 name = "sombervale"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "env_logger",
  "getrandom",
  "log",
  "pcx",
  "pixels",
  "randomize",
+ "shipyard",
+ "ultraviolet",
  "winit",
  "winit_input_helper",
 ]
