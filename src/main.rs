@@ -1,7 +1,7 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
-use crate::component::{Controls, Follow, UpdateTime};
+use crate::component::{Controls, Hud, UpdateTime};
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
 use shipyard::{UniqueViewMut, World};
@@ -15,6 +15,7 @@ mod animation;
 mod component;
 mod control;
 mod entity;
+mod power;
 mod system;
 
 pub(crate) const WIDTH: u32 = 160;
@@ -49,9 +50,15 @@ fn main() -> Result<(), Error> {
         .add_unique(UpdateTime::default())
         .expect("Update time");
     world.add_unique(Controls::default()).expect("Controls");
+
+    let hud = Hud {
+        frog_power: Some(power::FrogPower::default()),
+        ..Hud::default()
+    };
+    world.add_unique(hud).expect("HUD");
+
     world.add_entity(entity::temp_bg());
-    let jean = world.add_entity(entity::jean(60.0, 0.0, 85.0));
-    world.add_entity(entity::frog(40.0, 0.0, 100.0, Follow(jean)));
+    world.add_entity(entity::jean(60.0, 0.0, 85.0));
 
     system::register_systems(&world);
 

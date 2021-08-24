@@ -1,3 +1,4 @@
+use crate::power::FrogPower;
 use shipyard::EntityId;
 use std::time::Instant;
 use ultraviolet::vec::Vec3;
@@ -39,3 +40,9 @@ pub(crate) struct Animation<P, A> {
 }
 
 pub(crate) struct Follow(pub(crate) EntityId);
+
+#[derive(Default)]
+pub(crate) struct Hud {
+    pub(crate) frog_power: Option<FrogPower>,
+    pub(crate) _storm_power: Option<()>,
+}

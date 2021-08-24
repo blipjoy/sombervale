@@ -42,9 +42,10 @@ impl Controls {
         self.walk
     }
 
-    pub(crate) fn power(&self) -> Power {
+    pub(crate) fn power(&mut self) -> Power {
         if self.prev_power != self.current_power {
-            self.current_power
+            self.prev_power = self.current_power;
+            self.prev_power
         } else {
             Power::NoInput
         }
