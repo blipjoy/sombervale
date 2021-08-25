@@ -15,8 +15,8 @@ pub(crate) struct Velocity(pub(crate) Vec3);
 pub(crate) struct Animation<A: Animated>(pub(crate) A);
 
 pub(crate) struct Sprite {
-    pub(crate) width: usize,
-    pub(crate) height: usize,
+    pub(crate) width: isize,
+    pub(crate) height: isize,
     pub(crate) image: Vec<u8>,
     pub(crate) frame_index: usize,
 }

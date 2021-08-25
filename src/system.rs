@@ -1,4 +1,4 @@
-use crate::animation::{Animated, FrogAnims, JeanAnims};
+use crate::animation::{Animated, BlobAnims, FrogAnims, JeanAnims};
 use crate::component::{
     Animation, Controls, CoordinateSpace, Follow, Hud, Position, Random, Sprite, UpdateTime,
     Velocity,
@@ -17,6 +17,7 @@ use ultraviolet::{Rotor3, Vec2, Vec3};
 // Speeds are in pixels per second
 const JEAN_SPEED: f32 = 60.0;
 const FROG_SPEED: f32 = 180.0;
+const BLOB_SPEED: f32 = 70.0;
 
 // Max distance where Frog will begin hopping toward Jean
 const FROG_THRESHOLD: f32 = 28.0;
@@ -32,7 +33,7 @@ type FrogStorage<'a> = (
 
 pub(crate) fn register_systems(world: &World) {
     Workload::builder("draw")
-        .with_system(&draw)
+        .with_system(&draw_sprite)
         .with_system(&draw_hud)
         .add_to_world(world)
         .expect("Register systems");
@@ -42,16 +43,18 @@ pub(crate) fn register_systems(world: &World) {
         .with_system(&summon_frog)
         .with_system(&update_jean_velocity)
         .with_system(&update_frog_velocity)
+        .with_system(&update_blob_velocity)
         .with_system(&update_positions)
         .with_system(&update_animation::<JeanAnims>)
         .with_system(&update_animation::<FrogAnims>)
+        .with_system(&update_animation::<BlobAnims>)
         .with_system(&update_hud)
         .with_system(&update_time)
         .add_to_world(world)
         .expect("Register systems");
 }
 
-fn draw(
+fn draw_sprite(
     mut pixels: UniqueViewMut<Pixels>,
     positions: View<Position>,
     sprites: View<Sprite>,
@@ -82,7 +85,7 @@ fn draw(
         };
 
         // Select the current frame
-        let size = sprite.width * 3 * sprite.height;
+        let size = (sprite.width * 3 * sprite.height) as usize;
         let start = sprite.frame_index * size;
         let end = start + size;
         let image = &sprite.image[start..end];
@@ -90,12 +93,14 @@ fn draw(
         // Draw the frame at the correct position
         for (i, color) in image.chunks(3).enumerate() {
             if color != [0xff, 0, 0xff] {
-                // FIXME: Allow negative positions
-                let x = i % sprite.width + screen_pos.x.round() as usize;
-                let y = i / sprite.width + screen_pos.y.round() as usize;
+                let i = i as isize;
+                let x = i % sprite.width + screen_pos.x.round() as isize;
+                let y = i / sprite.width + screen_pos.y.round() as isize;
+                let width = WIDTH as isize;
+                let height = HEIGHT as isize;
 
-                if x < WIDTH as usize && y < HEIGHT as usize {
-                    let index = (y * WIDTH as usize + x) * 4;
+                if x >= 0 && x < width && y >= 0 && y < height {
+                    let index = ((y * width + x) * 4) as usize;
                     frame[index..index + 3].copy_from_slice(color);
                 }
             }
@@ -104,11 +109,11 @@ fn draw(
         // // DEBUG DRAWING
         // {
         //     let pos = world_to_screen(pos.0, Vec2::default());
-        //     let x = pos.x.round() as usize;
-        //     let y = pos.y.round() as usize;
-        //     let width = WIDTH as usize;
-        //     let height = HEIGHT as usize;
-        //     if x < width && y >= 1 && y < height + 1 {
+        //     let x = pos.x.round() as isize;
+        //     let y = pos.y.round() as isize;
+        //     let width = WIDTH as isize;
+        //     let height = HEIGHT as isize;
+        //     if x >= 0 && x < width && y >= 1 && y < height + 1 {
         //         let index = ((y - 1) * width + x) * 4;
         //         frame[index..index + 3].copy_from_slice(&[0xff, 0, 0xff]);
         //     }
@@ -267,6 +272,39 @@ fn update_frog_velocity(
     }
 }
 
+fn update_blob_velocity(
+    mut velocities: ViewMut<Velocity>,
+    mut animations: ViewMut<Animation<BlobAnims>>,
+    mut random: UniqueViewMut<Random>,
+    ut: UniqueView<UpdateTime>,
+) {
+    use crate::animation::BlobCurrentAnim::*;
+
+    let dt = ut.0.elapsed();
+    let magnitude = dt.as_secs_f32() / (1.0 / BLOB_SPEED);
+    let entities = (&mut velocities, &mut animations).fast_iter();
+
+    for (vel, anim) in entities {
+        // When not moving, randomly decide on a new direction to bounce
+        if vel.0.mag() < 0.01 && random.next_f32() < 0.01 {
+            let angle = random.next_f32() * TAU;
+            let rotor = Rotor3::from_rotation_xz(angle);
+            vel.0 = Vec3::unit_x().rotated_by(rotor) * magnitude;
+
+            let animation = if vel.0.x > 0.0 {
+                BounceRight
+            } else {
+                BounceLeft
+            };
+            anim.0.set(animation);
+        }
+
+        if let IdleLeft | IdleRight = anim.0.playing() {
+            vel.0 = Vec3::default();
+        }
+    }
+}
+
 fn update_animation<A: Animated + 'static>(
     mut animations: ViewMut<Animation<A>>,
     mut sprite: ViewMut<Sprite>,
@@ -284,6 +322,9 @@ fn update_positions(mut positions: ViewMut<Position>, velocities: View<Velocity>
     for (pos, vel) in entities {
         // TODO: Collision detection?
         pos.0 += vel.0;
+
+        // This is a terrible hack
+        pos.0.z = pos.0.z.min(34.0);
     }
 }
 

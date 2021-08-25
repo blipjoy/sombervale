@@ -62,6 +62,8 @@ fn main() -> Result<(), Error> {
     world.add_entity(entity::temp_bg());
     world.add_entity(entity::jean(60.0, 0.0, 16.0));
 
+    world.add_entity(entity::blob(80.0, 0.0, 13.0));
+
     system::register_systems(&world);
 
     event_loop.run(move |event, _, control_flow| {

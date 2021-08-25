@@ -1,14 +1,14 @@
-use crate::animation::{FrogAnims, JeanAnims};
+use crate::animation::{BlobAnims, FrogAnims, JeanAnims};
 use crate::component::{Animation, CoordinateSpace, Follow, Position, Sprite, Velocity};
 
-fn load_image(pcx: &[u8]) -> (usize, usize, Vec<u8>) {
+fn load_image(pcx: &[u8]) -> (isize, isize, Vec<u8>) {
     use std::io::Cursor;
 
     let mut pcx = pcx::Reader::new(Cursor::new(pcx)).unwrap();
 
-    let width = pcx.width() as usize;
-    let height = pcx.height() as usize;
-    let stride = width * 3;
+    let width = pcx.width() as isize;
+    let height = pcx.height() as isize;
+    let stride = (width * 3) as usize;
 
     let mut image = Vec::with_capacity(width as usize * height as usize * 3);
 
@@ -92,4 +92,31 @@ pub(crate) fn frog(
     let space = CoordinateSpace::World;
 
     (pos, vel, sprite, space, anim, follow)
+}
+
+pub(crate) fn blob(
+    x: f32,
+    y: f32,
+    z: f32,
+) -> (
+    Position,
+    Velocity,
+    Sprite,
+    CoordinateSpace,
+    Animation<BlobAnims>,
+) {
+    let (width, _, image) = load_image(include_bytes!("../assets/blob.pcx"));
+
+    let pos = Position::new(x, y, z);
+    let vel = Velocity::default();
+    let sprite = Sprite {
+        width,
+        height: 25,
+        image,
+        frame_index: 0,
+    };
+    let anim = Animation(BlobAnims::new());
+    let space = CoordinateSpace::World;
+
+    (pos, vel, sprite, space, anim)
 }

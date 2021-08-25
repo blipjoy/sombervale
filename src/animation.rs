@@ -84,6 +84,22 @@ pub(crate) enum JeanCurrentAnim {
     WalkLeft,
 }
 
+pub(crate) struct BlobAnims {
+    playing: BlobCurrentAnim,
+    idle_right: Animation,
+    idle_left: Animation,
+    bounce_right: Animation,
+    bounce_left: Animation,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum BlobCurrentAnim {
+    IdleRight,
+    IdleLeft,
+    BounceRight,
+    BounceLeft,
+}
+
 impl FrogAnims {
     pub(crate) fn new() -> Self {
         Self {
@@ -238,6 +254,92 @@ impl Animated for JeanAnims {
             JeanCurrentAnim::IdleLeft => self.idle_left.update(),
             JeanCurrentAnim::WalkRight => self.walk_right.update(),
             JeanCurrentAnim::WalkLeft => self.walk_left.update(),
+        }
+    }
+}
+
+impl BlobAnims {
+    pub(crate) fn new() -> Self {
+        Self {
+            playing: BlobCurrentAnim::IdleLeft,
+            idle_right: Animation::new(vec![Frame::new(0, Duration::from_secs(1))]),
+            idle_left: Animation::new(vec![Frame::new(8, Duration::from_secs(1))]),
+            bounce_right: Animation::new(vec![
+                Frame::new(1, Duration::from_millis(80)),
+                Frame::new(2, Duration::from_millis(80)),
+                Frame::new(3, Duration::from_millis(80)),
+                Frame::new(4, Duration::from_millis(80)),
+                Frame::new(5, Duration::from_millis(80)),
+                Frame::new(6, Duration::from_millis(80)),
+                Frame::new(7, Duration::from_millis(120)),
+            ]),
+            bounce_left: Animation::new(vec![
+                Frame::new(9, Duration::from_millis(80)),
+                Frame::new(10, Duration::from_millis(80)),
+                Frame::new(11, Duration::from_millis(80)),
+                Frame::new(12, Duration::from_millis(80)),
+                Frame::new(13, Duration::from_millis(80)),
+                Frame::new(14, Duration::from_millis(80)),
+                Frame::new(15, Duration::from_millis(120)),
+            ]),
+        }
+    }
+
+    pub(crate) fn set(&mut self, next: BlobCurrentAnim) {
+        self.playing = next;
+
+        // Reset the animation
+        let animation = match self.playing {
+            BlobCurrentAnim::IdleRight => &mut self.idle_right,
+            BlobCurrentAnim::IdleLeft => &mut self.idle_left,
+            BlobCurrentAnim::BounceRight => &mut self.bounce_right,
+            BlobCurrentAnim::BounceLeft => &mut self.bounce_left,
+        };
+
+        animation.reset();
+    }
+
+    pub(crate) fn playing(&self) -> BlobCurrentAnim {
+        self.playing
+    }
+
+    pub(crate) fn get_frame_index(&self) -> usize {
+        match self.playing {
+            BlobCurrentAnim::IdleRight => self.idle_right.get_frame().index,
+            BlobCurrentAnim::IdleLeft => self.idle_left.get_frame().index,
+            BlobCurrentAnim::BounceRight => self.bounce_right.get_frame().index,
+            BlobCurrentAnim::BounceLeft => self.bounce_left.get_frame().index,
+        }
+    }
+}
+
+impl Animated for BlobAnims {
+    fn animate(&mut self) -> usize {
+        match self.playing {
+            BlobCurrentAnim::IdleRight => self.idle_right.update(),
+            BlobCurrentAnim::IdleLeft => self.idle_left.update(),
+            BlobCurrentAnim::BounceRight => {
+                let last_frame_index = self.bounce_right.get_frame().index;
+                let frame_index = self.bounce_right.update();
+
+                if last_frame_index == 7 && frame_index == 1 {
+                    self.set(BlobCurrentAnim::IdleRight);
+                    self.get_frame_index()
+                } else {
+                    frame_index
+                }
+            }
+            BlobCurrentAnim::BounceLeft => {
+                let last_frame_index = self.bounce_left.get_frame().index;
+                let frame_index = self.bounce_left.update();
+
+                if last_frame_index == 15 && frame_index == 9 {
+                    self.set(BlobCurrentAnim::IdleLeft);
+                    self.get_frame_index()
+                } else {
+                    frame_index
+                }
+            }
         }
     }
 }
