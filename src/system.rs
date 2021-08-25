@@ -1,14 +1,34 @@
-use crate::animation::{FrogAnims, FrogCurrentAnim, JeanAnims, JeanCurrentAnim};
-use crate::component::{Animation, Controls, Follow, Hud, Position, Sprite, UpdateTime};
+use crate::animation::{Animated, FrogAnims, JeanAnims};
+use crate::component::{
+    Animation, Controls, CoordinateSpace, Follow, Hud, Position, Random, Sprite, UpdateTime,
+    Velocity,
+};
 use crate::control::{Direction, Power, Walk};
-use crate::entity;
 use crate::{HEIGHT, WIDTH};
 use pixels::Pixels;
 use shipyard::{
-    EntitiesViewMut, IntoFastIter, IntoWithId, UniqueView, UniqueViewMut, View, ViewMut, Workload,
-    World,
+    EntitiesViewMut, Get, IntoFastIter, IntoWithId, UniqueView, UniqueViewMut, View, ViewMut,
+    Workload, World,
 };
+use std::f32::consts::TAU;
 use std::time::Instant;
+use ultraviolet::{Rotor3, Vec2, Vec3};
+
+// Speeds are in pixels per second
+const JEAN_SPEED: f32 = 60.0;
+const FROG_SPEED: f32 = 180.0;
+
+// Max distance where Frog will begin hopping toward Jean
+const FROG_THRESHOLD: f32 = 28.0;
+
+type FrogStorage<'a> = (
+    ViewMut<'a, Position>,
+    ViewMut<'a, Velocity>,
+    ViewMut<'a, Sprite>,
+    ViewMut<'a, CoordinateSpace>,
+    ViewMut<'a, Animation<FrogAnims>>,
+    ViewMut<'a, Follow>,
+);
 
 pub(crate) fn register_systems(world: &World) {
     Workload::builder("draw")
@@ -17,26 +37,49 @@ pub(crate) fn register_systems(world: &World) {
         .add_to_world(world)
         .expect("Register systems");
 
+    // TODO: Add system for summoning frogs
     Workload::builder("update")
-        .with_system(&update_player)
-        .with_system(&update_frog)
+        .with_system(&summon_frog)
+        .with_system(&update_jean_velocity)
+        .with_system(&update_frog_velocity)
+        .with_system(&update_positions)
+        .with_system(&update_animation::<JeanAnims>)
+        .with_system(&update_animation::<FrogAnims>)
         .with_system(&update_hud)
         .with_system(&update_time)
         .add_to_world(world)
         .expect("Register systems");
 }
 
-fn draw(mut pixels: UniqueViewMut<Pixels>, pos: View<Position>, sprite: View<Sprite>) {
+fn draw(
+    mut pixels: UniqueViewMut<Pixels>,
+    positions: View<Position>,
+    sprites: View<Sprite>,
+    spaces: View<CoordinateSpace>,
+) {
     // Clear screen
     let frame = pixels.get_frame();
     for pixel in frame.chunks_exact_mut(4) {
         pixel.copy_from_slice(&[0x1a, 0x1c, 0x2c, 0xff]);
     }
 
-    (&pos, &sprite).fast_iter().for_each(|(pos, sprite)| {
-        // // Debug position
-        // let index = (pos.0.z.round() as usize * WIDTH as usize + pos.0.x.round() as usize) * 4;
-        // frame[index..index + 3].copy_from_slice(&[0xff, 0, 0xff]);
+    // Sort entities by Z coordinate
+    let mut entities = (&positions, &sprites, &spaces)
+        .fast_iter()
+        .collect::<Vec<_>>();
+    entities.sort_unstable_by_key(|(pos, _, &space)| match space {
+        CoordinateSpace::World => -pos.0.z.round() as i32,
+        CoordinateSpace::Screen => i32::MIN + (pos.0.z.round() as i32),
+    });
+
+    for (pos, sprite, &space) in entities {
+        // Convert entity position to screen space
+        let size = Vec2::new(sprite.width as f32, sprite.height as f32);
+        let screen_pos = if space == CoordinateSpace::World {
+            world_to_screen(pos.0, size)
+        } else {
+            pos.0.truncated()
+        };
 
         // Select the current frame
         let size = sprite.width * 3 * sprite.height;
@@ -47,9 +90,9 @@ fn draw(mut pixels: UniqueViewMut<Pixels>, pos: View<Position>, sprite: View<Spr
         // Draw the frame at the correct position
         for (i, color) in image.chunks(3).enumerate() {
             if color != [0xff, 0, 0xff] {
-                // TODO: Treat position as lower center of sprite, not upper left corner
-                let x = i % sprite.width + pos.0.x.round() as usize;
-                let y = i / sprite.width + pos.0.z.round() as usize;
+                // FIXME: Allow negative positions
+                let x = i % sprite.width + screen_pos.x.round() as usize;
+                let y = i / sprite.width + screen_pos.y.round() as usize;
 
                 if x < WIDTH as usize && y < HEIGHT as usize {
                     let index = (y * WIDTH as usize + x) * 4;
@@ -57,7 +100,28 @@ fn draw(mut pixels: UniqueViewMut<Pixels>, pos: View<Position>, sprite: View<Spr
                 }
             }
         }
-    });
+
+        // // DEBUG DRAWING
+        // {
+        //     let pos = world_to_screen(pos.0, Vec2::default());
+        //     let x = pos.x.round() as usize;
+        //     let y = pos.y.round() as usize;
+        //     let width = WIDTH as usize;
+        //     let height = HEIGHT as usize;
+        //     if x < width && y >= 1 && y < height + 1 {
+        //         let index = ((y - 1) * width + x) * 4;
+        //         frame[index..index + 3].copy_from_slice(&[0xff, 0, 0xff]);
+        //     }
+        // }
+    }
+}
+
+/// Convert world coordinates to screen coordinates.
+fn world_to_screen(pos: Vec3, size: Vec2) -> Vec2 {
+    let x = pos.x - size.x / 2.0;
+    let y = HEIGHT as f32 - (pos.z + size.y);
+
+    Vec2::new(x, y)
 }
 
 fn draw_hud(mut pixels: UniqueViewMut<Pixels>, hud: UniqueView<Hud>) {
@@ -86,209 +150,144 @@ fn draw_hud(mut pixels: UniqueViewMut<Pixels>, hud: UniqueView<Hud>) {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn update_player(
-    mut pos: ViewMut<Position>,
-    mut anim: ViewMut<Animation<JeanCurrentAnim, JeanAnims>>,
-    mut sprite: ViewMut<Sprite>,
-    mut follow: ViewMut<Follow>,
-    mut frog_anims: ViewMut<Animation<FrogCurrentAnim, FrogAnims>>,
-    ut: UniqueView<UpdateTime>,
+fn summon_frog(
+    mut entities: EntitiesViewMut,
     mut controls: UniqueViewMut<Controls>,
     mut hud: UniqueViewMut<Hud>,
-    mut entities: EntitiesViewMut,
+    mut random: UniqueViewMut<Random>,
+    tag: View<Animation<JeanAnims>>,
+    storage: FrogStorage,
 ) {
-    use JeanCurrentAnim::*;
-
-    // Move 1 pixel every 16.667 ms.
-    let dt = ut.0.elapsed();
-    let velocity = dt.as_secs_f32() / 0.016667;
-
-    // TODO: Angular velocity with sin() cos()
-
-    let mut new_frogs = Vec::new();
-
-    (&mut pos, &mut anim, &mut sprite)
+    // Get Jean's position
+    let (pos, jean_id) = (&storage.0, &tag)
         .fast_iter()
         .with_id()
-        .for_each(|(id, (pos, anim, sprite))| {
-            // Update animation
-            match controls.0.walk() {
-                Walk::Walk(dir) => {
-                    if dir & Direction::UP == Direction::UP {
-                        anim.playing = WalkRight; // FIXME: Need new animations
-                        pos.0.z -= velocity;
-                    }
+        .next()
+        .map(|(id, (pos, _))| (pos.0, id))
+        .expect("Where's Jean?!");
 
-                    if dir & Direction::DOWN == Direction::DOWN {
-                        anim.playing = WalkLeft; // FIXME: Need new animations
-                        pos.0.z += velocity;
-                    }
+    // TODO: Select the correct power based on HUD
+    if let Some(frog_power) = hud.frog_power.as_mut() {
+        if controls.0.power() == Power::Use && frog_power.use_power() {
+            let angle = random.next_f32() * TAU;
+            let frog = crate::entity::frog(
+                pos.x + angle.cos() * random.next_f32() * FROG_THRESHOLD,
+                pos.y,
+                pos.z + angle.sin() * random.next_f32() * FROG_THRESHOLD,
+                Follow::new(jean_id),
+            );
 
-                    if dir & Direction::LEFT == Direction::LEFT {
-                        anim.playing = WalkLeft;
-                        pos.0.x -= velocity;
-                    }
-
-                    if dir & Direction::RIGHT == Direction::RIGHT {
-                        anim.playing = WalkRight;
-                        pos.0.x += velocity;
-                    }
-                }
-                Walk::NoInput => {
-                    anim.playing = match anim.playing {
-                        IdleLeft | WalkLeft => IdleLeft,
-                        IdleRight | WalkRight => IdleRight,
-                    };
-                }
-            }
-
-            if controls.0.power() == Power::Use && hud.frog_power.is_some() {
-                // TODO: Choose the correct power, and execute appropriately.
-                if hud.frog_power.as_mut().unwrap().use_power() {
-                    new_frogs.push(entity::frog(
-                        pos.0.x + 10.0, // FIXME: Randomize!
-                        pos.0.y,
-                        pos.0.z + 10.0, // FIXME: Randomize!
-                        Follow(id),
-                    ));
-                }
-            }
-
-            // Play animation
-            let animation = match anim.playing {
-                IdleRight => &mut anim.animations.idle_right,
-                IdleLeft => &mut anim.animations.idle_left,
-                WalkRight => &mut anim.animations.walk_right,
-                WalkLeft => &mut anim.animations.walk_left,
-            };
-
-            let dur = animation.get_frame().duration;
-            if let Some(index) = animation.update(dur) {
-                sprite.frame_index = index;
-            }
-        });
-
-    // Add new frogs
-    if !new_frogs.is_empty() {
-        entities.bulk_add_entity(
-            (&mut pos, &mut sprite, &mut frog_anims, &mut follow),
-            new_frogs,
-        );
+            entities.add_entity(storage, frog);
+        }
     }
 }
 
-fn update_frog(
-    mut pos: ViewMut<Position>,
-    mut anim: ViewMut<Animation<FrogCurrentAnim, FrogAnims>>,
-    mut sprite: ViewMut<Sprite>,
-    // follow: View<Follow>,
-    jean: View<Animation<JeanCurrentAnim, JeanAnims>>,
+fn update_jean_velocity(
+    mut velocities: ViewMut<Velocity>,
+    mut animations: ViewMut<Animation<JeanAnims>>,
+    controls: UniqueView<Controls>,
     ut: UniqueView<UpdateTime>,
 ) {
-    use FrogCurrentAnim::*;
+    use crate::animation::JeanCurrentAnim::*;
 
-    // Move 1 pixel every 9 ms.
     let dt = ut.0.elapsed();
-    let velocity = dt.as_secs_f32() / 0.009;
+    let magnitude = Vec3::new(dt.as_secs_f32() / (1.0 / JEAN_SPEED), 0.0, 0.0);
+    let entities = (&mut velocities, &mut animations).fast_iter();
 
-    // FIXME: Try this instead: https://leudz.github.io/shipyard/guide/0.5.0/fundamentals/get-and-modify.html
-    // Currently does not work because the entity ID is not static.
-    let jean_pos = (&pos, &jean)
-        .fast_iter()
-        .next()
-        .map(|(pos, _)| pos.0)
-        .expect("Where's Jean?!");
+    for (vel, anim) in entities {
+        let (animation, angle) = match controls.0.walk() {
+            Walk::Walk(Direction::RIGHT) => (WalkRight, TAU * (0.0 / 8.0)),
+            Walk::Walk(Direction::UP_RIGHT) => (WalkRight, TAU * (1.0 / 8.0)),
+            Walk::Walk(Direction::UP) => (anim.0.to_walking(), TAU * (2.0 / 8.0)),
+            Walk::Walk(Direction::UP_LEFT) => (WalkLeft, TAU * (3.0 / 8.0)),
+            Walk::Walk(Direction::LEFT) => (WalkLeft, TAU * (4.0 / 8.0)),
+            Walk::Walk(Direction::DOWN_LEFT) => (WalkLeft, TAU * (5.0 / 8.0)),
+            Walk::Walk(Direction::DOWN) => (anim.0.to_walking(), TAU * (6.0 / 8.0)),
+            Walk::Walk(Direction::DOWN_RIGHT) => (WalkRight, TAU * (7.0 / 8.0)),
+            _ => (anim.0.to_idle(), -1.0),
+        };
 
-    (&mut pos, &mut anim, &mut sprite)
-        .fast_iter()
-        .for_each(|(pos, anim, sprite)| {
-            let animation = match anim.playing {
-                IdleRight => &anim.animations.idle_right,
-                IdleLeft => &anim.animations.idle_left,
-                HopRight => &anim.animations.hop_right,
-                HopLeft => &anim.animations.hop_left,
-            };
-            let frame = animation.get_frame();
+        if anim.0.playing() != animation {
+            anim.0.set(animation);
+        }
 
-            // Distance where Frog will stop moving toward Jean
-            const THRESHOLD: f32 = 32.0;
-
-            enum Dir {
-                NorthSouth,
-                WestEast,
-            }
-
-            // Follow Jean by setting the animation
-            // TODO: Fix this so hard! Movement should be based on the direction to jean_pos
-            let mut chasing = None;
-            if pos.0.x >= jean_pos.x + THRESHOLD {
-                chasing = Some(Dir::WestEast);
-                anim.playing = HopLeft;
-            } else if pos.0.x <= jean_pos.x - THRESHOLD {
-                chasing = Some(Dir::WestEast);
-                anim.playing = HopRight;
-            }
-
-            if pos.0.z >= jean_pos.z + THRESHOLD {
-                chasing = Some(Dir::NorthSouth);
-                anim.playing = HopLeft;
-            } else if pos.0.z <= jean_pos.z - THRESHOLD {
-                chasing = Some(Dir::NorthSouth);
-                anim.playing = HopRight;
-            }
-
-            // Make frog stop moving when it touches the ground
-            if frame.index != 0 && frame.index != 4 && frame.index != 5 && frame.index != 9 {
-                match anim.playing {
-                    HopLeft => {
-                        if frame.index != 5 && frame.index != 9 {
-                            match chasing {
-                                Some(Dir::NorthSouth) => {
-                                    pos.0.z -= velocity;
-                                }
-                                _ => {
-                                    pos.0.x -= velocity;
-                                }
-                            }
-                        }
-                    }
-                    HopRight => {
-                        if frame.index != 0 && frame.index != 4 {
-                            match chasing {
-                                Some(Dir::NorthSouth) => {
-                                    pos.0.z += velocity;
-                                }
-                                _ => {
-                                    pos.0.x += velocity;
-                                }
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            } else if chasing.is_none() {
-                anim.playing = match anim.playing {
-                    IdleRight | HopRight => IdleRight,
-                    IdleLeft | HopLeft => IdleLeft,
-                }
-            }
-
-            // Play animation
-            let animation = match anim.playing {
-                IdleRight => &mut anim.animations.idle_right,
-                IdleLeft => &mut anim.animations.idle_left,
-                HopRight => &mut anim.animations.hop_right,
-                HopLeft => &mut anim.animations.hop_left,
-            };
-            let dur = animation.frames[animation.current_index % animation.frames.len()].duration;
-            if let Some(index) = animation.update(dur) {
-                sprite.frame_index = index;
-            }
-        });
+        if angle >= 0.0 {
+            let rotor = Rotor3::from_rotation_xz(angle);
+            vel.0 = magnitude.rotated_by(rotor);
+        } else {
+            // TODO: Friction
+            vel.0 = Vec3::default();
+        }
+    }
 }
 
-fn update_hud(mut hud: UniqueViewMut<Hud>, frogs: View<Animation<FrogCurrentAnim, FrogAnims>>) {
+fn update_frog_velocity(
+    mut velocities: ViewMut<Velocity>,
+    mut animations: ViewMut<Animation<FrogAnims>>,
+    mut following: ViewMut<Follow>,
+    positions: View<Position>,
+    mut random: UniqueViewMut<Random>,
+    ut: UniqueView<UpdateTime>,
+) {
+    use crate::animation::FrogCurrentAnim::*;
+
+    let dt = ut.0.elapsed();
+    let magnitude = dt.as_secs_f32() / (1.0 / FROG_SPEED);
+    let entities = (&mut velocities, &mut animations, &mut following, &positions).fast_iter();
+
+    for (vel, anim, follow, pos) in entities {
+        // Get Jean's position
+        let jean_pos = positions.get(follow.entity_id).expect("Where's Jean?!").0;
+
+        // Position of Jean relative to Frog
+        let relative_pos = jean_pos - pos.0;
+
+        let frame_index = anim.0.get_frame_index();
+
+        // Update the direction only when the Frog is idling
+        // AND it is far away from the target
+        if relative_pos.mag() > FROG_THRESHOLD
+            && (anim.0.playing() == IdleLeft || anim.0.playing() == IdleRight)
+        {
+            let animation = if relative_pos.x > 0.0 {
+                HopRight
+            } else {
+                HopLeft
+            };
+            anim.0.set(animation);
+            follow.direction = relative_pos.normalized() * (random.next_f32() * 0.3 + 0.7);
+        }
+
+        // Frog ONLY moves when the animation frame is hopping
+        vel.0 = if frame_index != 0 && frame_index != 4 && frame_index != 5 && frame_index != 9 {
+            follow.direction * magnitude
+        } else {
+            Vec3::default()
+        };
+    }
+}
+
+fn update_animation<A: Animated + 'static>(
+    mut animations: ViewMut<Animation<A>>,
+    mut sprite: ViewMut<Sprite>,
+) {
+    let entities = (&mut animations, &mut sprite).fast_iter();
+
+    for (anim, sprite) in entities {
+        sprite.frame_index = anim.0.animate();
+    }
+}
+
+fn update_positions(mut positions: ViewMut<Position>, velocities: View<Velocity>) {
+    let entities = (&mut positions, &velocities).fast_iter();
+
+    for (pos, vel) in entities {
+        // TODO: Collision detection?
+        pos.0 += vel.0;
+    }
+}
+
+fn update_hud(mut hud: UniqueViewMut<Hud>, frogs: View<Animation<FrogAnims>>) {
     if let Some(frog_power) = &mut hud.frog_power {
         frog_power.update(frogs.len());
     }

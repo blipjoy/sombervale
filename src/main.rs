@@ -1,7 +1,7 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
-use crate::component::{Controls, Hud, UpdateTime};
+use crate::component::{Controls, Hud, Random, UpdateTime};
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
 use shipyard::{UniqueViewMut, World};
@@ -45,6 +45,9 @@ fn main() -> Result<(), Error> {
     // Populate the drawable world
     let mut world = World::default();
 
+    world
+        .add_unique(Random::default())
+        .expect("Add random to world");
     world.add_unique(pixels).expect("Add pixels to world");
     world
         .add_unique(UpdateTime::default())
@@ -53,12 +56,11 @@ fn main() -> Result<(), Error> {
 
     let hud = Hud {
         frog_power: Some(power::FrogPower::default()),
-        ..Hud::default()
     };
     world.add_unique(hud).expect("HUD");
 
     world.add_entity(entity::temp_bg());
-    world.add_entity(entity::jean(60.0, 0.0, 85.0));
+    world.add_entity(entity::jean(60.0, 0.0, 16.0));
 
     system::register_systems(&world);
 

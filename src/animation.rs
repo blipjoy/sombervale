@@ -1,18 +1,22 @@
 use std::time::{Duration, Instant};
 
-pub(crate) struct Frame {
-    pub(crate) index: usize,
-    pub(crate) duration: Duration,
+pub(crate) trait Animated {
+    fn animate(&mut self) -> usize;
 }
 
-pub(crate) struct Animation {
-    pub(crate) frames: Vec<Frame>,
-    pub(crate) current_index: usize,
-    pub(crate) start_time: Instant,
+struct Frame {
+    index: usize,
+    duration: Duration,
+}
+
+struct Animation {
+    frames: Vec<Frame>,
+    current_index: usize,
+    start_time: Instant,
 }
 
 impl Animation {
-    pub(crate) fn new(frames: Vec<Frame>) -> Self {
+    fn new(frames: Vec<Frame>) -> Self {
         Self {
             frames,
             current_index: 0,
@@ -20,38 +24,43 @@ impl Animation {
         }
     }
 
-    pub(crate) fn get_frame(&self) -> &Frame {
+    fn get_frame(&self) -> &Frame {
         &self.frames[self.current_index % self.frames.len()]
     }
 
-    pub(crate) fn update(&mut self, dur: Duration) -> Option<usize> {
+    fn update(&mut self) -> usize {
+        let dur = self.get_frame().duration;
+
         if self.start_time.elapsed() > dur {
             self.current_index += 1;
             self.current_index %= self.frames.len();
             self.start_time = Instant::now();
-
-            let index = self.frames[self.current_index].index;
-
-            Some(index)
-        } else {
-            None
         }
+
+        self.frames[self.current_index].index
+    }
+
+    fn reset(&mut self) {
+        self.current_index = 0;
+        self.start_time = Instant::now();
     }
 }
 
 impl Frame {
-    pub(crate) fn new(index: usize, duration: Duration) -> Self {
+    fn new(index: usize, duration: Duration) -> Self {
         Self { index, duration }
     }
 }
 
 pub(crate) struct FrogAnims {
-    pub(crate) idle_right: Animation,
-    pub(crate) idle_left: Animation,
-    pub(crate) hop_right: Animation,
-    pub(crate) hop_left: Animation,
+    playing: FrogCurrentAnim,
+    idle_right: Animation,
+    idle_left: Animation,
+    hop_right: Animation,
+    hop_left: Animation,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum FrogCurrentAnim {
     IdleRight,
     IdleLeft,
@@ -60,12 +69,14 @@ pub(crate) enum FrogCurrentAnim {
 }
 
 pub(crate) struct JeanAnims {
-    pub(crate) idle_right: Animation,
-    pub(crate) idle_left: Animation,
-    pub(crate) walk_right: Animation,
-    pub(crate) walk_left: Animation,
+    playing: JeanCurrentAnim,
+    idle_right: Animation,
+    idle_left: Animation,
+    walk_right: Animation,
+    walk_left: Animation,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum JeanCurrentAnim {
     IdleRight,
     IdleLeft,
@@ -76,6 +87,7 @@ pub(crate) enum JeanCurrentAnim {
 impl FrogAnims {
     pub(crate) fn new() -> Self {
         Self {
+            playing: FrogCurrentAnim::IdleRight,
             idle_right: Animation::new(vec![Frame::new(0, Duration::from_secs(1))]),
             idle_left: Animation::new(vec![Frame::new(5, Duration::from_secs(1))]),
             hop_right: Animation::new(vec![
@@ -83,15 +95,72 @@ impl FrogAnims {
                 Frame::new(1, Duration::from_millis(100)),
                 Frame::new(2, Duration::from_millis(100)),
                 Frame::new(3, Duration::from_millis(100)),
-                Frame::new(4, Duration::from_millis(140)),
+                Frame::new(4, Duration::from_millis(200)),
             ]),
             hop_left: Animation::new(vec![
                 Frame::new(5, Duration::from_millis(100)),
                 Frame::new(6, Duration::from_millis(100)),
                 Frame::new(7, Duration::from_millis(100)),
                 Frame::new(8, Duration::from_millis(100)),
-                Frame::new(9, Duration::from_millis(140)),
+                Frame::new(9, Duration::from_millis(200)),
             ]),
+        }
+    }
+
+    pub(crate) fn set(&mut self, next: FrogCurrentAnim) {
+        self.playing = next;
+
+        // Reset the animation
+        let animation = match self.playing {
+            FrogCurrentAnim::IdleRight => &mut self.idle_right,
+            FrogCurrentAnim::IdleLeft => &mut self.idle_left,
+            FrogCurrentAnim::HopRight => &mut self.hop_right,
+            FrogCurrentAnim::HopLeft => &mut self.hop_left,
+        };
+
+        animation.reset();
+    }
+
+    pub(crate) fn playing(&self) -> FrogCurrentAnim {
+        self.playing
+    }
+
+    pub(crate) fn get_frame_index(&self) -> usize {
+        match self.playing {
+            FrogCurrentAnim::IdleRight => self.idle_right.get_frame().index,
+            FrogCurrentAnim::IdleLeft => self.idle_left.get_frame().index,
+            FrogCurrentAnim::HopRight => self.hop_right.get_frame().index,
+            FrogCurrentAnim::HopLeft => self.hop_left.get_frame().index,
+        }
+    }
+}
+
+impl Animated for FrogAnims {
+    fn animate(&mut self) -> usize {
+        // Hopping animations will switch to idle after the animation cycle completes
+        match self.playing {
+            FrogCurrentAnim::IdleRight => self.idle_right.update(),
+            FrogCurrentAnim::IdleLeft => self.idle_left.update(),
+            FrogCurrentAnim::HopRight => {
+                let last_frame_index = self.hop_right.get_frame().index;
+                let frame_index = self.hop_right.update();
+
+                if last_frame_index == 4 && frame_index == 0 {
+                    self.set(FrogCurrentAnim::IdleRight);
+                }
+
+                frame_index
+            }
+            FrogCurrentAnim::HopLeft => {
+                let last_frame_index = self.hop_left.get_frame().index;
+                let frame_index = self.hop_left.update();
+
+                if last_frame_index == 9 && frame_index == 5 {
+                    self.set(FrogCurrentAnim::IdleLeft);
+                }
+
+                frame_index
+            }
         }
     }
 }
@@ -99,6 +168,7 @@ impl FrogAnims {
 impl JeanAnims {
     pub(crate) fn new() -> Self {
         Self {
+            playing: JeanCurrentAnim::IdleRight,
             idle_right: Animation::new(vec![Frame::new(0, Duration::from_secs(1))]),
             idle_left: Animation::new(vec![Frame::new(9, Duration::from_secs(1))]),
             walk_right: Animation::new(vec![
@@ -121,6 +191,53 @@ impl JeanAnims {
                 Frame::new(16, Duration::from_millis(80)),
                 Frame::new(17, Duration::from_millis(80)),
             ]),
+        }
+    }
+
+    pub(crate) fn set(&mut self, next: JeanCurrentAnim) {
+        self.playing = next;
+
+        // Reset the animation
+        let animation = match self.playing {
+            JeanCurrentAnim::IdleRight => &mut self.idle_right,
+            JeanCurrentAnim::IdleLeft => &mut self.idle_left,
+            JeanCurrentAnim::WalkRight => &mut self.walk_right,
+            JeanCurrentAnim::WalkLeft => &mut self.walk_left,
+        };
+
+        animation.reset();
+    }
+
+    pub(crate) fn playing(&self) -> JeanCurrentAnim {
+        self.playing
+    }
+
+    pub(crate) fn to_idle(&self) -> JeanCurrentAnim {
+        match self.playing() {
+            JeanCurrentAnim::IdleLeft => JeanCurrentAnim::IdleLeft,
+            JeanCurrentAnim::IdleRight => JeanCurrentAnim::IdleRight,
+            JeanCurrentAnim::WalkLeft => JeanCurrentAnim::IdleLeft,
+            JeanCurrentAnim::WalkRight => JeanCurrentAnim::IdleRight,
+        }
+    }
+
+    pub(crate) fn to_walking(&self) -> JeanCurrentAnim {
+        match self.playing() {
+            JeanCurrentAnim::IdleLeft => JeanCurrentAnim::WalkLeft,
+            JeanCurrentAnim::IdleRight => JeanCurrentAnim::WalkRight,
+            JeanCurrentAnim::WalkLeft => JeanCurrentAnim::WalkLeft,
+            JeanCurrentAnim::WalkRight => JeanCurrentAnim::WalkRight,
+        }
+    }
+}
+
+impl Animated for JeanAnims {
+    fn animate(&mut self) -> usize {
+        match self.playing {
+            JeanCurrentAnim::IdleRight => self.idle_right.update(),
+            JeanCurrentAnim::IdleLeft => self.idle_left.update(),
+            JeanCurrentAnim::WalkRight => self.walk_right.update(),
+            JeanCurrentAnim::WalkLeft => self.walk_left.update(),
         }
     }
 }

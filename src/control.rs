@@ -20,6 +20,11 @@ bitflags! {
         const DOWN = 0b0010;
         const LEFT = 0b0100;
         const RIGHT = 0b1000;
+
+        const UP_LEFT = Self::UP.bits | Self::LEFT.bits;
+        const UP_RIGHT = Self::UP.bits | Self::RIGHT.bits;
+        const DOWN_LEFT = Self::DOWN.bits | Self::LEFT.bits;
+        const DOWN_RIGHT = Self::DOWN.bits | Self::RIGHT.bits;
     }
 }
 
