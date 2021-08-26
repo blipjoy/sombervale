@@ -58,8 +58,14 @@ impl Random {
         self.0.next_u32()
     }
 
-    pub(crate) fn next_f32(&mut self) -> f32 {
+    /// Random f32 between 0.0 and 1.0 (excluding 1.0)
+    pub(crate) fn next_f32_unit(&mut self) -> f32 {
         randomize::f32_half_open_right(self.next_u32())
+    }
+
+    /// Random f32 between -1.0 and 1.0 (aka "Normalized Device Coordinates")
+    pub(crate) fn next_f32_ndc(&mut self) -> f32 {
+        randomize::f32_closed_neg_pos(self.next_u32())
     }
 }
 

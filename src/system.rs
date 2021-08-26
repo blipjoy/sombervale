@@ -23,6 +23,9 @@ const BLOB_SPEED: f32 = 70.0;
 // Max distance where Frog will begin hopping toward Jean
 const FROG_THRESHOLD: f32 = 28.0;
 
+// Jitter for the threshold distance; makes frogs desynchronize slightly
+const FROG_THRESHOLD_JITTER: f32 = 4.0;
+
 const SCREEN_SIZE: Vec2 = Vec2::new(WIDTH as f32, HEIGHT as f32);
 const BOUNDS_MIN: Vec2 = Vec2::new(32.0, 32.0);
 const BOUNDS_MAX: Vec2 = Vec2::new(WIDTH as f32 - 32.0, HEIGHT as f32 - 32.0);
@@ -197,11 +200,11 @@ fn summon_frog(
     // TODO: Select the correct power based on HUD
     if let (Some((pos, jean_id)), Some(frog_power)) = (jean, hud.frog_power.as_mut()) {
         if controls.0.power() == Power::Use && frog_power.use_power() {
-            let angle = random.next_f32() * TAU;
+            let angle = random.next_f32_unit() * TAU;
             let frog = crate::entity::frog(
-                pos.x + angle.cos() * random.next_f32() * FROG_THRESHOLD,
+                pos.x + angle.cos() * random.next_f32_unit() * FROG_THRESHOLD,
                 pos.y,
-                pos.z + angle.sin() * random.next_f32() * FROG_THRESHOLD,
+                pos.z + angle.sin() * random.next_f32_unit() * FROG_THRESHOLD,
                 Follow::new(jean_id),
             );
 
@@ -271,7 +274,7 @@ fn update_frog_velocity(
 
             // Update the direction only when the Frog is idling
             // AND it is far away from the target
-            if relative_pos.mag() > FROG_THRESHOLD
+            if relative_pos.mag() - random.next_f32_unit() * FROG_THRESHOLD_JITTER > FROG_THRESHOLD
                 && (anim.0.playing() == IdleLeft || anim.0.playing() == IdleRight)
             {
                 let animation = if relative_pos.x > 0.0 {
@@ -280,7 +283,9 @@ fn update_frog_velocity(
                     HopLeft
                 };
                 anim.0.set(animation);
-                follow.direction = relative_pos.normalized() * (random.next_f32() * 0.3 + 0.7);
+
+                let rotor = Rotor3::from_rotation_xz(random.next_f32_ndc() * TAU / 16.0);
+                follow.direction = relative_pos.normalized().rotated_by(rotor);
             }
         }
 
@@ -308,8 +313,8 @@ fn update_blob_velocity(
 
     for (vel, anim) in entities {
         // When not moving, randomly decide on a new direction to bounce
-        if vel.0.mag() < 0.01 && random.next_f32() < 0.01 {
-            let angle = random.next_f32() * TAU;
+        if vel.0.mag() < 0.01 && random.next_f32_unit() < 0.01 {
+            let angle = random.next_f32_unit() * TAU;
             let rotor = Rotor3::from_rotation_xz(angle);
             vel.0 = Vec3::unit_x().rotated_by(rotor) * magnitude;
 
