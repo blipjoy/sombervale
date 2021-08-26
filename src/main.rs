@@ -1,7 +1,7 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
-use crate::component::{Controls, Hud, Random, UpdateTime};
+use crate::component::{Controls, Hud, Random, UpdateTime, Viewport};
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
 use shipyard::{UniqueViewMut, World};
@@ -15,8 +15,10 @@ mod animation;
 mod component;
 mod control;
 mod entity;
+mod image;
 mod power;
 mod system;
+mod tilemap;
 
 pub(crate) const WIDTH: u32 = 160;
 pub(crate) const HEIGHT: u32 = 128;
@@ -42,7 +44,7 @@ fn main() -> Result<(), Error> {
         Pixels::new(WIDTH, HEIGHT, surface_texture)?
     };
 
-    // Populate the drawable world
+    // Populate the world
     let mut world = World::default();
 
     world
@@ -53,15 +55,17 @@ fn main() -> Result<(), Error> {
         .add_unique(UpdateTime::default())
         .expect("Update time");
     world.add_unique(Controls::default()).expect("Controls");
+    world.add_unique(Viewport::default()).expect("Viewport");
 
     let hud = Hud {
         frog_power: Some(power::FrogPower::default()),
     };
     world.add_unique(hud).expect("HUD");
 
-    world.add_entity(entity::temp_bg());
-    world.add_entity(entity::jean(60.0, 0.0, 16.0));
+    tilemap::add_tilemap(&mut world, include_str!("../assets/tilemap.tmx"));
 
+    // TODO: Spawn entities through tilemap
+    world.add_entity(entity::jean(60.0, 0.0, 16.0));
     world.add_entity(entity::blob(80.0, 0.0, 13.0));
 
     system::register_systems(&world);

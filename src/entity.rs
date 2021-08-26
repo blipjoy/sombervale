@@ -1,55 +1,9 @@
 use crate::animation::{BlobAnims, FrogAnims, JeanAnims};
-use crate::component::{Animation, CoordinateSpace, Follow, Position, Sprite, Velocity};
+use crate::component::{Animation, Follow, Position, Sprite, Velocity};
+use crate::image::load_image;
 
-fn load_image(pcx: &[u8]) -> (isize, isize, Vec<u8>) {
-    use std::io::Cursor;
-
-    let mut pcx = pcx::Reader::new(Cursor::new(pcx)).unwrap();
-
-    let width = pcx.width() as isize;
-    let height = pcx.height() as isize;
-    let stride = (width * 3) as usize;
-
-    let mut image = Vec::with_capacity(width as usize * height as usize * 3);
-
-    for _ in 0..height {
-        let mut row = Vec::with_capacity(stride);
-        row.resize_with(stride, Default::default);
-        pcx.next_row_rgb(&mut row).unwrap();
-
-        image.extend(&row);
-    }
-
-    (width, height, image)
-}
-
-pub(crate) fn temp_bg() -> (Position, Sprite, CoordinateSpace) {
-    let (width, height, image) = load_image(include_bytes!("../assets/temp_bg.pcx"));
-
-    let pos = Position::new(0.0, 0.0, 0.0);
-    let sprite = Sprite {
-        width,
-        height,
-        image,
-        frame_index: 0,
-    };
-    let space = CoordinateSpace::Screen;
-
-    (pos, sprite, space)
-}
-
-pub(crate) fn jean(
-    x: f32,
-    y: f32,
-    z: f32,
-) -> (
-    Position,
-    Velocity,
-    Sprite,
-    CoordinateSpace,
-    Animation<JeanAnims>,
-) {
-    let (width, _, image) = load_image(include_bytes!("../assets/jean.pcx"));
+pub(crate) fn jean(x: f32, y: f32, z: f32) -> (Position, Velocity, Sprite, Animation<JeanAnims>) {
+    let (width, _, image) = load_image(include_bytes!("../assets/jean.png"));
 
     let pos = Position::new(x, y, z);
     let vel = Velocity::default();
@@ -60,9 +14,8 @@ pub(crate) fn jean(
         frame_index: 0,
     };
     let anim = Animation(JeanAnims::new());
-    let space = CoordinateSpace::World;
 
-    (pos, vel, sprite, space, anim)
+    (pos, vel, sprite, anim)
 }
 
 pub(crate) fn frog(
@@ -70,15 +23,8 @@ pub(crate) fn frog(
     y: f32,
     z: f32,
     follow: Follow,
-) -> (
-    Position,
-    Velocity,
-    Sprite,
-    CoordinateSpace,
-    Animation<FrogAnims>,
-    Follow,
-) {
-    let (width, _, image) = load_image(include_bytes!("../assets/frog.pcx"));
+) -> (Position, Velocity, Sprite, Animation<FrogAnims>, Follow) {
+    let (width, _, image) = load_image(include_bytes!("../assets/frog.png"));
 
     let pos = Position::new(x, y, z);
     let vel = Velocity::default();
@@ -89,23 +35,12 @@ pub(crate) fn frog(
         frame_index: 0,
     };
     let anim = Animation(FrogAnims::new());
-    let space = CoordinateSpace::World;
 
-    (pos, vel, sprite, space, anim, follow)
+    (pos, vel, sprite, anim, follow)
 }
 
-pub(crate) fn blob(
-    x: f32,
-    y: f32,
-    z: f32,
-) -> (
-    Position,
-    Velocity,
-    Sprite,
-    CoordinateSpace,
-    Animation<BlobAnims>,
-) {
-    let (width, _, image) = load_image(include_bytes!("../assets/blob.pcx"));
+pub(crate) fn blob(x: f32, y: f32, z: f32) -> (Position, Velocity, Sprite, Animation<BlobAnims>) {
+    let (width, _, image) = load_image(include_bytes!("../assets/blob.png"));
 
     let pos = Position::new(x, y, z);
     let vel = Velocity::default();
@@ -116,7 +51,6 @@ pub(crate) fn blob(
         frame_index: 0,
     };
     let anim = Animation(BlobAnims::new());
-    let space = CoordinateSpace::World;
 
-    (pos, vel, sprite, space, anim)
+    (pos, vel, sprite, anim)
 }

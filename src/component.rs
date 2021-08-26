@@ -5,7 +5,7 @@ use randomize::PCG32;
 use shipyard::EntityId;
 use std::convert::TryInto;
 use std::time::Instant;
-use ultraviolet::vec::Vec3;
+use ultraviolet::{Vec2, Vec3};
 
 pub(crate) struct Random(pub(crate) PCG32);
 pub(crate) struct Controls(pub(crate) crate::control::Controls);
@@ -13,6 +13,16 @@ pub(crate) struct UpdateTime(pub(crate) Instant);
 pub(crate) struct Position(pub(crate) Vec3);
 pub(crate) struct Velocity(pub(crate) Vec3);
 pub(crate) struct Animation<A: Animated>(pub(crate) A);
+
+#[derive(Default)]
+pub(crate) struct Viewport(pub(crate) Vec2);
+
+pub(crate) struct Tilemap {
+    pub(crate) width: isize,
+    pub(crate) height: isize,
+    pub(crate) image: Vec<u8>,
+    pub(crate) parallax: f32,
+}
 
 pub(crate) struct Sprite {
     pub(crate) width: isize,
@@ -29,15 +39,6 @@ pub(crate) struct Follow {
 #[derive(Default)]
 pub(crate) struct Hud {
     pub(crate) frog_power: Option<FrogPower>,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub(crate) enum CoordinateSpace {
-    /// Screen-space coordinates cannot have negative Z components.
-    Screen,
-
-    // World-space coordinates are right-handed (Positive-Z goes into the screen)
-    World,
 }
 
 impl Default for Random {

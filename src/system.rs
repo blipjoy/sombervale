@@ -1,9 +1,10 @@
 use crate::animation::{Animated, BlobAnims, FrogAnims, JeanAnims};
 use crate::component::{
-    Animation, Controls, CoordinateSpace, Follow, Hud, Position, Random, Sprite, UpdateTime,
-    Velocity,
+    Animation, Controls, Follow, Hud, Position, Random, Sprite, Tilemap, UpdateTime, Velocity,
+    Viewport,
 };
 use crate::control::{Direction, Power, Walk};
+use crate::image::blit;
 use crate::{HEIGHT, WIDTH};
 use pixels::Pixels;
 use shipyard::{
@@ -22,17 +23,21 @@ const BLOB_SPEED: f32 = 70.0;
 // Max distance where Frog will begin hopping toward Jean
 const FROG_THRESHOLD: f32 = 28.0;
 
+const SCREEN_SIZE: Vec2 = Vec2::new(WIDTH as f32, HEIGHT as f32);
+const BOUNDS_MIN: Vec2 = Vec2::new(32.0, 32.0);
+const BOUNDS_MAX: Vec2 = Vec2::new(WIDTH as f32 - 32.0, HEIGHT as f32 - 32.0);
+
 type FrogStorage<'a> = (
     ViewMut<'a, Position>,
     ViewMut<'a, Velocity>,
     ViewMut<'a, Sprite>,
-    ViewMut<'a, CoordinateSpace>,
     ViewMut<'a, Animation<FrogAnims>>,
     ViewMut<'a, Follow>,
 );
 
 pub(crate) fn register_systems(world: &World) {
     Workload::builder("draw")
+        .with_system(&draw_tilemap)
         .with_system(&draw_sprite)
         .with_system(&draw_hud)
         .add_to_world(world)
@@ -45,6 +50,7 @@ pub(crate) fn register_systems(world: &World) {
         .with_system(&update_frog_velocity)
         .with_system(&update_blob_velocity)
         .with_system(&update_positions)
+        .with_system(&update_viewport)
         .with_system(&update_animation::<JeanAnims>)
         .with_system(&update_animation::<FrogAnims>)
         .with_system(&update_animation::<BlobAnims>)
@@ -54,11 +60,18 @@ pub(crate) fn register_systems(world: &World) {
         .expect("Register systems");
 }
 
-fn draw_sprite(
+/// Convert world coordinates to screen coordinates.
+fn world_to_screen(pos: Vec3, size: Vec2, viewport: Vec2) -> Vec2 {
+    let x = pos.x - size.x / 2.0;
+    let y = HEIGHT as f32 - (pos.z + size.y);
+
+    Vec2::new(x, y) - viewport
+}
+
+fn draw_tilemap(
     mut pixels: UniqueViewMut<Pixels>,
-    positions: View<Position>,
-    sprites: View<Sprite>,
-    spaces: View<CoordinateSpace>,
+    viewport: UniqueView<Viewport>,
+    tilemaps: View<Tilemap>,
 ) {
     // Clear screen
     let frame = pixels.get_frame();
@@ -66,70 +79,74 @@ fn draw_sprite(
         pixel.copy_from_slice(&[0x1a, 0x1c, 0x2c, 0xff]);
     }
 
-    // Sort entities by Z coordinate
-    let mut entities = (&positions, &sprites, &spaces)
-        .fast_iter()
-        .collect::<Vec<_>>();
-    entities.sort_unstable_by_key(|(pos, _, &space)| match space {
-        CoordinateSpace::World => -pos.0.z.round() as i32,
-        CoordinateSpace::Screen => i32::MIN + (pos.0.z.round() as i32),
-    });
+    // TODO: Parallax
+    let screen_pos = Vec2::default();
+    for (layer,) in (&tilemaps,).fast_iter() {
+        let layer_bounds = Vec2::new(layer.width as f32, layer.height as f32) - SCREEN_SIZE;
+        let stride = layer.width * 4;
+        let start = viewport.0.y.min(layer_bounds.y) as usize * stride as usize
+            + viewport.0.x.min(layer_bounds.x) as usize * 4;
+        let end = start + 128 * stride as usize;
 
-    for (pos, sprite, &space) in entities {
+        // Copy source image to destination frame
+        blit(
+            frame,
+            &layer.image[start..end],
+            stride,
+            screen_pos,
+            SCREEN_SIZE,
+            layer.width,
+        );
+    }
+}
+
+fn draw_sprite(
+    mut pixels: UniqueViewMut<Pixels>,
+    viewport: UniqueView<Viewport>,
+    positions: View<Position>,
+    sprites: View<Sprite>,
+) {
+    let frame = pixels.get_frame();
+
+    // Sort entities by Z coordinate
+    let mut entities = (&positions, &sprites).fast_iter().collect::<Vec<_>>();
+    entities.sort_unstable_by_key(|(pos, _)| -pos.0.z as i32);
+
+    for (pos, sprite) in entities {
         // Convert entity position to screen space
         let size = Vec2::new(sprite.width as f32, sprite.height as f32);
-        let screen_pos = if space == CoordinateSpace::World {
-            world_to_screen(pos.0, size)
-        } else {
-            pos.0.truncated()
-        };
+        let screen_pos = world_to_screen(pos.0, size, viewport.0);
 
         // Select the current frame
-        let size = (sprite.width * 3 * sprite.height) as usize;
+        let size = (sprite.width * 4 * sprite.height) as usize;
         let start = sprite.frame_index * size;
         let end = start + size;
         let image = &sprite.image[start..end];
+        let stride = sprite.width * 4;
 
-        // Draw the frame at the correct position
-        for (i, color) in image.chunks(3).enumerate() {
-            if color != [0xff, 0, 0xff] {
-                let i = i as isize;
-                let x = i % sprite.width + screen_pos.x.round() as isize;
-                let y = i / sprite.width + screen_pos.y.round() as isize;
-                let width = WIDTH as isize;
-                let height = HEIGHT as isize;
-
-                if x >= 0 && x < width && y >= 0 && y < height {
-                    let index = ((y * width + x) * 4) as usize;
-                    frame[index..index + 3].copy_from_slice(color);
-                }
-            }
-        }
+        // Copy source image to destination frame
+        blit(frame, image, stride, screen_pos, SCREEN_SIZE, sprite.width);
 
         // // DEBUG DRAWING
         // {
         //     let pos = world_to_screen(pos.0, Vec2::default());
-        //     let x = pos.x.round() as isize;
-        //     let y = pos.y.round() as isize;
+        //     let x = pos.x as isize;
+        //     let y = pos.y as isize;
         //     let width = WIDTH as isize;
         //     let height = HEIGHT as isize;
         //     if x >= 0 && x < width && y >= 1 && y < height + 1 {
-        //         let index = ((y - 1) * width + x) * 4;
-        //         frame[index..index + 3].copy_from_slice(&[0xff, 0, 0xff]);
+        //         let index = (((y - 1) * width + x) * 4) as usize;
+        //         frame[index..index + 4].copy_from_slice(&[0xff, 0, 0xff, 0xff]);
         //     }
         // }
     }
 }
 
-/// Convert world coordinates to screen coordinates.
-fn world_to_screen(pos: Vec3, size: Vec2) -> Vec2 {
-    let x = pos.x - size.x / 2.0;
-    let y = HEIGHT as f32 - (pos.z + size.y);
-
-    Vec2::new(x, y)
-}
-
-fn draw_hud(mut pixels: UniqueViewMut<Pixels>, hud: UniqueView<Hud>) {
+fn draw_hud(
+    mut pixels: UniqueViewMut<Pixels>,
+    _viewport: UniqueView<Viewport>,
+    hud: UniqueView<Hud>,
+) {
     let frame = pixels.get_frame();
 
     // FIXME: Draw Frog Power HUD
@@ -322,9 +339,36 @@ fn update_positions(mut positions: ViewMut<Position>, velocities: View<Velocity>
     for (pos, vel) in entities {
         // TODO: Collision detection?
         pos.0 += vel.0;
+    }
+}
 
-        // This is a terrible hack
-        pos.0.z = pos.0.z.min(34.0);
+fn update_viewport(
+    mut viewport: UniqueViewMut<Viewport>,
+    positions: View<Position>,
+    sprites: View<Sprite>,
+    tag: View<Animation<JeanAnims>>,
+) {
+    for (pos, sprite, _) in (&positions, &sprites, &tag).fast_iter() {
+        let size = Vec2::new(sprite.width as f32, sprite.height as f32);
+        let sprite_min = world_to_screen(pos.0, size, Vec2::default());
+        let sprite_max = sprite_min + Vec2::new(sprite.width as f32, sprite.height as f32);
+
+        if sprite_max.x > (viewport.0.x + BOUNDS_MAX.x) {
+            viewport.0.x = sprite_max.x - BOUNDS_MAX.x;
+        }
+        if sprite_max.y > (viewport.0.y + BOUNDS_MAX.y) {
+            viewport.0.y = sprite_max.y - BOUNDS_MAX.y;
+        }
+
+        if sprite_min.x < (viewport.0.x + BOUNDS_MIN.x) {
+            viewport.0.x = sprite_min.x - BOUNDS_MIN.x;
+        }
+        if sprite_min.y < (viewport.0.y + BOUNDS_MIN.y) {
+            viewport.0.y = sprite_min.y - BOUNDS_MIN.y;
+        }
+
+        // Clamp viewport to positive coordinates
+        viewport.0 = viewport.0.max_by_component(Vec2::default());
     }
 }
 
