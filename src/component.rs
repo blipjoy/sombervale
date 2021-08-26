@@ -22,7 +22,7 @@ pub(crate) struct Viewport {
 
 pub(crate) struct Tilemap {
     pub(crate) image: Image,
-    pub(crate) parallax: f32,
+    pub(crate) parallax: Vec2,
 }
 
 pub(crate) struct Sprite {

@@ -83,10 +83,9 @@ fn draw_tilemap(
     let mut dest = ImageViewMut::new(&mut frame, SCREEN_SIZE);
     let dest_pos = Vec2::default();
 
-    // TODO: Parallax
     for (layer,) in (&tilemaps,).fast_iter() {
-        // Copy source image to destination frame
-        blit(&mut dest, dest_pos, &layer.image, viewport.pos, SCREEN_SIZE);
+        let src_pos = viewport.pos * layer.parallax;
+        blit(&mut dest, dest_pos, &layer.image, src_pos, SCREEN_SIZE);
     }
 }
 

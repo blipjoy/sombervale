@@ -1,9 +1,20 @@
 use crate::component::{Tilemap, Viewport};
 use crate::image::{blit, load_image, Image, ImageViewMut};
 use shipyard::World;
+use std::collections::HashMap;
 use std::io::Cursor;
 use tiled::{LayerData, PropertyValue};
 use ultraviolet::Vec2;
+
+pub(crate) fn add_tilemap(world: &mut World, tmx: &str) {
+    let (viewport, layers) = load_tilemap(tmx);
+
+    world.add_unique(viewport).expect("Add viewport to world");
+
+    for layer in layers {
+        world.add_entity((layer,));
+    }
+}
 
 // TODO: This should load object layers, too!
 fn load_tilemap(tmx: &str) -> (Viewport, Vec<Tilemap>) {
@@ -78,16 +89,8 @@ fn load_tilemap(tmx: &str) -> (Viewport, Vec<Tilemap>) {
             }
 
             let image = Image::new(image, dst_size);
-            let tilemap = Tilemap {
-                image,
-                parallax: layer.properties.get("parallax").map_or(1.0, |value| {
-                    if let PropertyValue::FloatValue(value) = value {
-                        *value
-                    } else {
-                        1.0
-                    }
-                }),
-            };
+            let parallax = get_parallax(&layer.properties);
+            let tilemap = Tilemap { image, parallax };
 
             maps.push(tilemap);
         }
@@ -101,12 +104,21 @@ fn load_tilemap(tmx: &str) -> (Viewport, Vec<Tilemap>) {
     (viewport, maps)
 }
 
-pub(crate) fn add_tilemap(world: &mut World, tmx: &str) {
-    let (viewport, layers) = load_tilemap(tmx);
+fn get_parallax(properties: &HashMap<String, PropertyValue>) -> Vec2 {
+    let parallax_x = properties.get("parallax_x").map_or(1.0, |value| {
+        if let PropertyValue::FloatValue(value) = value {
+            *value
+        } else {
+            1.0
+        }
+    });
+    let parallax_y = properties.get("parallax_y").map_or(1.0, |value| {
+        if let PropertyValue::FloatValue(value) = value {
+            *value
+        } else {
+            1.0
+        }
+    });
 
-    world.add_unique(viewport).expect("Add viewport to world");
-
-    for layer in layers {
-        world.add_entity((layer,));
-    }
+    Vec2::new(parallax_x, parallax_y)
 }
