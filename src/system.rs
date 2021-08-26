@@ -188,15 +188,14 @@ fn summon_frog(
     storage: FrogStorage,
 ) {
     // Get Jean's position
-    let (pos, jean_id) = (&storage.0, &tag)
+    let jean = (&storage.0, &tag)
         .fast_iter()
         .with_id()
         .next()
-        .map(|(id, (pos, _))| (pos.0, id))
-        .expect("Where's Jean?!");
+        .map(|(id, (pos, _))| (pos.0, id));
 
     // TODO: Select the correct power based on HUD
-    if let Some(frog_power) = hud.frog_power.as_mut() {
+    if let (Some((pos, jean_id)), Some(frog_power)) = (jean, hud.frog_power.as_mut()) {
         if controls.0.power() == Power::Use && frog_power.use_power() {
             let angle = random.next_f32() * TAU;
             let frog = crate::entity::frog(
@@ -266,28 +265,27 @@ fn update_frog_velocity(
 
     for (vel, anim, follow, pos) in entities {
         // Get Jean's position
-        let jean_pos = positions.get(follow.entity_id).expect("Where's Jean?!").0;
+        if let Ok(jean_pos) = positions.get(follow.entity_id) {
+            // Position of Jean relative to Frog
+            let relative_pos = jean_pos.0 - pos.0;
 
-        // Position of Jean relative to Frog
-        let relative_pos = jean_pos - pos.0;
-
-        let frame_index = anim.0.get_frame_index();
-
-        // Update the direction only when the Frog is idling
-        // AND it is far away from the target
-        if relative_pos.mag() > FROG_THRESHOLD
-            && (anim.0.playing() == IdleLeft || anim.0.playing() == IdleRight)
-        {
-            let animation = if relative_pos.x > 0.0 {
-                HopRight
-            } else {
-                HopLeft
-            };
-            anim.0.set(animation);
-            follow.direction = relative_pos.normalized() * (random.next_f32() * 0.3 + 0.7);
+            // Update the direction only when the Frog is idling
+            // AND it is far away from the target
+            if relative_pos.mag() > FROG_THRESHOLD
+                && (anim.0.playing() == IdleLeft || anim.0.playing() == IdleRight)
+            {
+                let animation = if relative_pos.x > 0.0 {
+                    HopRight
+                } else {
+                    HopLeft
+                };
+                anim.0.set(animation);
+                follow.direction = relative_pos.normalized() * (random.next_f32() * 0.3 + 0.7);
+            }
         }
 
         // Frog ONLY moves when the animation frame is hopping
+        let frame_index = anim.0.get_frame_index();
         vel.0 = if frame_index != 0 && frame_index != 4 && frame_index != 5 && frame_index != 9 {
             follow.direction * magnitude
         } else {
