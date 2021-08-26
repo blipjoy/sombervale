@@ -4,7 +4,7 @@ use crate::component::{
     Viewport,
 };
 use crate::control::{Direction, Power, Walk};
-use crate::image::blit;
+use crate::image::{blit, ImageViewMut};
 use crate::{HEIGHT, WIDTH};
 use pixels::Pixels;
 use shipyard::{
@@ -61,10 +61,10 @@ pub(crate) fn register_systems(world: &World) {
 }
 
 /// Convert world coordinates to screen coordinates.
-fn world_to_screen(pos: Vec3, size: Vec2, viewport: Vec2) -> Vec2 {
+fn world_to_screen(pos: Vec3, size: Vec2, viewport: &Viewport) -> Vec2 {
     let x = pos.x - size.x / 2.0;
-    let y = HEIGHT as f32 - (pos.z + size.y);
-    let pos = Vec2::new(x, y) - viewport;
+    let y = viewport.world_height - (pos.z + size.y);
+    let pos = Vec2::new(x, y) - viewport.pos;
 
     Vec2::new(pos.x.floor(), pos.y.floor())
 }
@@ -75,29 +75,18 @@ fn draw_tilemap(
     tilemaps: View<Tilemap>,
 ) {
     // Clear screen
-    let frame = pixels.get_frame();
+    let mut frame = pixels.get_frame();
     for pixel in frame.chunks_exact_mut(4) {
         pixel.copy_from_slice(&[0x1a, 0x1c, 0x2c, 0xff]);
     }
 
-    // TODO: Parallax
-    let screen_pos = Vec2::default();
-    for (layer,) in (&tilemaps,).fast_iter() {
-        let layer_bounds = Vec2::new(layer.width as f32, layer.height as f32) - SCREEN_SIZE;
-        let stride = layer.width * 4;
-        let start = viewport.0.y.min(layer_bounds.y) as usize * stride as usize
-            + viewport.0.x.min(layer_bounds.x) as usize * 4;
-        let end = start + 128 * stride as usize;
+    let mut dest = ImageViewMut::new(&mut frame, SCREEN_SIZE);
+    let dest_pos = Vec2::default();
 
+    // TODO: Parallax
+    for (layer,) in (&tilemaps,).fast_iter() {
         // Copy source image to destination frame
-        blit(
-            frame,
-            &layer.image[start..end],
-            stride,
-            screen_pos,
-            SCREEN_SIZE,
-            layer.width,
-        );
+        blit(&mut dest, dest_pos, &layer.image, viewport.pos, SCREEN_SIZE);
     }
 }
 
@@ -107,7 +96,11 @@ fn draw_sprite(
     positions: View<Position>,
     sprites: View<Sprite>,
 ) {
-    let frame = pixels.get_frame();
+    let mut frame = pixels.get_frame();
+
+    // Create a single ImageViewMut that is shared over all sprites when debug mode is disabled
+    #[cfg(not(feature = "debug-mode"))]
+    let mut dest = ImageViewMut::new(&mut frame, SCREEN_SIZE);
 
     // Sort entities by Z coordinate
     let mut entities = (&positions, &sprites).fast_iter().collect::<Vec<_>>();
@@ -115,31 +108,45 @@ fn draw_sprite(
 
     for (pos, sprite) in entities {
         // Convert entity position to screen space
-        let size = Vec2::new(sprite.width as f32, sprite.height as f32);
-        let screen_pos = world_to_screen(pos.0, size, viewport.0);
+        let frame_size = Vec2::new(sprite.image.size().x, sprite.frame_height as f32);
+        let dest_pos = world_to_screen(pos.0, frame_size, &viewport);
 
         // Select the current frame
-        let size = (sprite.width * 4 * sprite.height) as usize;
-        let start = sprite.frame_index * size;
-        let end = start + size;
-        let image = &sprite.image[start..end];
-        let stride = sprite.width * 4;
+        let src_pos = Vec2::new(0.0, sprite.frame_index as f32 * sprite.frame_height as f32);
+
+        // DEBUG: We need a temporary ImageViewMut so that we can draw directly to the buffer later
+        #[cfg(feature = "debug-mode")]
+        let mut dest = ImageViewMut::new(&mut frame, SCREEN_SIZE);
 
         // Copy source image to destination frame
-        blit(frame, image, stride, screen_pos, SCREEN_SIZE, sprite.width);
+        blit(&mut dest, dest_pos, &sprite.image, src_pos, frame_size);
 
-        // // DEBUG DRAWING
-        // {
-        //     let pos = world_to_screen(pos.0, Vec2::default());
-        //     let x = pos.x as isize;
-        //     let y = pos.y as isize;
-        //     let width = WIDTH as isize;
-        //     let height = HEIGHT as isize;
-        //     if x >= 0 && x < width && y >= 1 && y < height + 1 {
-        //         let index = (((y - 1) * width + x) * 4) as usize;
-        //         frame[index..index + 4].copy_from_slice(&[0xff, 0, 0xff, 0xff]);
-        //     }
-        // }
+        // DEBUG DRAWING
+        #[cfg(feature = "debug-mode")]
+        {
+            // Pink dot for upper left corner
+            let screen_pos = world_to_screen(pos.0, frame_size, &viewport);
+            let x = screen_pos.x as isize;
+            let y = screen_pos.y as isize;
+            let width = WIDTH as isize;
+            let height = HEIGHT as isize;
+            if x >= 0 && x < width && y >= 1 && y < height + 1 {
+                let index = (((y - 1) * width + x) * 4) as usize;
+                frame[index..index + 4].copy_from_slice(&[0xff, 0, 0xff, 0xff]);
+            }
+
+            // Red dot for feet ("world position")
+            let screen_pos = world_to_screen(pos.0, frame_size, &viewport)
+                + Vec2::new(frame_size.x / 2.0, frame_size.y);
+            let x = screen_pos.x as isize;
+            let y = screen_pos.y as isize;
+            let width = WIDTH as isize;
+            let height = HEIGHT as isize;
+            if x >= 0 && x < width && y >= 1 && y < height + 1 {
+                let index = (((y - 1) * width + x) * 4) as usize;
+                frame[index..index + 4].copy_from_slice(&[0xff, 0, 0, 0xff]);
+            }
+        }
     }
 }
 
@@ -350,26 +357,30 @@ fn update_viewport(
     tag: View<Animation<JeanAnims>>,
 ) {
     for (pos, sprite, _) in (&positions, &sprites, &tag).fast_iter() {
-        let size = Vec2::new(sprite.width as f32, sprite.height as f32);
-        let sprite_min = world_to_screen(pos.0, size, Vec2::default());
-        let sprite_max = sprite_min + Vec2::new(sprite.width as f32, sprite.height as f32);
+        let viewport_basis = Viewport {
+            pos: Vec2::default(),
+            world_height: viewport.world_height,
+        };
+        let size = Vec2::new(sprite.image.size().x, sprite.frame_height as f32);
+        let sprite_min = world_to_screen(pos.0, size, &viewport_basis);
+        let sprite_max = sprite_min + size;
 
-        if sprite_max.x > (viewport.0.x + BOUNDS_MAX.x) {
-            viewport.0.x = sprite_max.x - BOUNDS_MAX.x;
+        // FIXME: Use clamp instead of multiple conditions
+        if sprite_max.x > (viewport.pos.x + BOUNDS_MAX.x) {
+            viewport.pos.x = sprite_max.x - BOUNDS_MAX.x;
         }
-        if sprite_max.y > (viewport.0.y + BOUNDS_MAX.y) {
-            viewport.0.y = sprite_max.y - BOUNDS_MAX.y;
-        }
-
-        if sprite_min.x < (viewport.0.x + BOUNDS_MIN.x) {
-            viewport.0.x = sprite_min.x - BOUNDS_MIN.x;
-        }
-        if sprite_min.y < (viewport.0.y + BOUNDS_MIN.y) {
-            viewport.0.y = sprite_min.y - BOUNDS_MIN.y;
+        if sprite_max.y > (viewport.pos.y + BOUNDS_MAX.y) {
+            viewport.pos.y = sprite_max.y - BOUNDS_MAX.y;
         }
 
-        // Clamp viewport to positive coordinates
-        viewport.0 = viewport.0.max_by_component(Vec2::default());
+        if sprite_min.x < (viewport.pos.x + BOUNDS_MIN.x) {
+            viewport.pos.x = sprite_min.x - BOUNDS_MIN.x;
+        }
+        if sprite_min.y < (viewport.pos.y + BOUNDS_MIN.y) {
+            viewport.pos.y = sprite_min.y - BOUNDS_MIN.y;
+        }
+
+        // TODO: Constrain viewport position to the world size
     }
 }
 

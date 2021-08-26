@@ -1,4 +1,5 @@
 use crate::animation::Animated;
+use crate::image::Image;
 use crate::power::FrogPower;
 use getrandom::getrandom;
 use randomize::PCG32;
@@ -14,20 +15,19 @@ pub(crate) struct Position(pub(crate) Vec3);
 pub(crate) struct Velocity(pub(crate) Vec3);
 pub(crate) struct Animation<A: Animated>(pub(crate) A);
 
-#[derive(Default)]
-pub(crate) struct Viewport(pub(crate) Vec2);
+pub(crate) struct Viewport {
+    pub(crate) pos: Vec2,
+    pub(crate) world_height: f32,
+}
 
 pub(crate) struct Tilemap {
-    pub(crate) width: isize,
-    pub(crate) height: isize,
-    pub(crate) image: Vec<u8>,
+    pub(crate) image: Image,
     pub(crate) parallax: f32,
 }
 
 pub(crate) struct Sprite {
-    pub(crate) width: isize,
-    pub(crate) height: isize,
-    pub(crate) image: Vec<u8>,
+    pub(crate) image: Image,
+    pub(crate) frame_height: isize,
     pub(crate) frame_index: usize,
 }
 

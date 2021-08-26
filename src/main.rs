@@ -1,7 +1,7 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
-use crate::component::{Controls, Hud, Random, UpdateTime, Viewport};
+use crate::component::{Controls, Hud, Random, UpdateTime};
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
 use shipyard::{UniqueViewMut, World};
@@ -55,7 +55,6 @@ fn main() -> Result<(), Error> {
         .add_unique(UpdateTime::default())
         .expect("Update time");
     world.add_unique(Controls::default()).expect("Controls");
-    world.add_unique(Viewport::default()).expect("Viewport");
 
     let hud = Hud {
         frog_power: Some(power::FrogPower::default()),

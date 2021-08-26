@@ -1,12 +1,12 @@
-use crate::component::Tilemap;
-use crate::image::{blit, load_image};
+use crate::component::{Tilemap, Viewport};
+use crate::image::{blit, load_image, Image, ImageViewMut};
 use shipyard::World;
 use std::io::Cursor;
 use tiled::{LayerData, PropertyValue};
 use ultraviolet::Vec2;
 
 // TODO: This should load object layers, too!
-fn load_layers(tmx: &str) -> Vec<Tilemap> {
+fn load_tilemap(tmx: &str) -> (Viewport, Vec<Tilemap>) {
     let tmx = tiled::parse(Cursor::new(tmx)).unwrap();
     let mut maps = Vec::new();
 
@@ -27,17 +27,19 @@ fn load_layers(tmx: &str) -> Vec<Tilemap> {
     assert_eq!(tileset_height % th as isize, 0);
 
     let tile_size = Vec2::new(tw as f32, th as f32);
-    let src_width = tw as isize;
-    let stride = tileset_width * 4;
     let tileset_width_in_tiles = tileset_width / tw as isize;
     let layer_width = tw * tmx.width;
     let layer_height = th * tmx.height;
     let dst_size = Vec2::new(layer_width as f32, layer_height as f32);
 
+    let src_size = Vec2::new(tileset_width as f32, tileset_height as f32);
+    let src = Image::new(tileset_image, src_size);
+
     for layer in &tmx.layers {
         if let LayerData::Finite(rows) = &layer.tiles {
             let mut image = Vec::with_capacity((layer_width * layer_height * 4) as usize);
             image.resize(image.capacity(), 0);
+            let mut dest = ImageViewMut::new(&mut image, dst_size);
 
             for (dst_y, cols) in rows.iter().enumerate() {
                 for (dst_x, tile) in cols.iter().enumerate() {
@@ -53,27 +55,30 @@ fn load_layers(tmx: &str) -> Vec<Tilemap> {
                     let tile_id = (tile.gid - tileset.first_gid) as isize;
                     let x = tile_id % tileset_width_in_tiles;
                     let y = tile_id / tileset_width_in_tiles;
-                    let dst_pos = Vec2::new(dst_x as f32, dst_y as f32) * tile_size;
+                    let dest_pos = Vec2::new(dst_x as f32, dst_y as f32) * tile_size;
                     let src_pos = Vec2::new(x as f32, y as f32) * tile_size;
 
-                    let start =
-                        (src_pos.y as usize * tileset_width as usize + src_pos.x as usize) * 4;
-                    let end = start + ((15 * tileset_width + 16) * 4) as usize;
-
-                    blit(
-                        &mut image,
-                        &tileset_image[start..end],
-                        stride,
-                        dst_pos,
-                        dst_size,
-                        src_width,
-                    )
+                    blit(&mut dest, dest_pos, &src, src_pos, tile_size);
                 }
             }
 
+            // DEBUG
+            #[cfg(feature = "debug-mode")]
+            {
+                let file_name = format!("{}.tiff", layer.name);
+                let mut file = std::fs::File::create(&file_name).unwrap();
+                let mut tiff = tiff::encoder::TiffEncoder::new(&mut file).unwrap();
+                let tiff = tiff
+                    .new_image::<tiff::encoder::colortype::RGBA8>(
+                        layer_width as u32,
+                        layer_height as u32,
+                    )
+                    .unwrap();
+                tiff.write_data(&image).unwrap();
+            }
+
+            let image = Image::new(image, dst_size);
             let tilemap = Tilemap {
-                width: layer_width as isize,
-                height: layer_height as isize,
                 image,
                 parallax: layer.properties.get("parallax").map_or(1.0, |value| {
                     if let PropertyValue::FloatValue(value) = value {
@@ -88,11 +93,20 @@ fn load_layers(tmx: &str) -> Vec<Tilemap> {
         }
     }
 
-    maps
+    let viewport = Viewport {
+        pos: Vec2::default(),
+        world_height: layer_height as f32,
+    };
+
+    (viewport, maps)
 }
 
 pub(crate) fn add_tilemap(world: &mut World, tmx: &str) {
-    for layer in load_layers(tmx) {
+    let (viewport, layers) = load_tilemap(tmx);
+
+    world.add_unique(viewport).expect("Add viewport to world");
+
+    for layer in layers {
         world.add_entity((layer,));
     }
 }

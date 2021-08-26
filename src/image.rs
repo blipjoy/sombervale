@@ -1,5 +1,31 @@
 use ultraviolet::Vec2;
 
+pub(crate) struct Image {
+    data: Vec<u8>,
+    size: Vec2,
+}
+
+pub(crate) struct ImageViewMut<'data> {
+    data: &'data mut [u8],
+    size: Vec2,
+}
+
+impl Image {
+    pub(crate) fn new(data: Vec<u8>, size: Vec2) -> Self {
+        Self { data, size }
+    }
+
+    pub(crate) fn size(&self) -> Vec2 {
+        self.size
+    }
+}
+
+impl<'data> ImageViewMut<'data> {
+    pub(crate) fn new(data: &'data mut [u8], size: Vec2) -> Self {
+        Self { data, size }
+    }
+}
+
 pub(crate) fn load_image(png: &[u8]) -> (isize, isize, Vec<u8>) {
     let (header, image) = png_decoder::decode(png).unwrap();
 
@@ -9,39 +35,78 @@ pub(crate) fn load_image(png: &[u8]) -> (isize, isize, Vec<u8>) {
     (width, height, image)
 }
 
-pub(crate) fn blit(
-    frame: &mut [u8],
-    image: &[u8],
-    stride: isize,
-    dst_pos: Vec2,
-    dst_size: Vec2,
-    src_width: isize,
+pub(crate) fn blit<'dest>(
+    dest: &mut ImageViewMut<'dest>,
+    mut dest_pos: Vec2,
+    src: &Image,
+    mut src_pos: Vec2,
+    mut size: Vec2,
 ) {
-    assert!(stride >= src_width * 4);
-    assert!(stride % 4 == 0);
+    assert!(size.x <= src.size.x);
+    assert!(size.y <= src.size.y);
+    assert!(size.x <= dest.size.x);
+    assert!(size.y <= dest.size.y);
 
-    let width = dst_size.x as isize;
-    let height = dst_size.y as isize;
+    // Account for src_pos being negative
+    if src_pos.x < 0.0 {
+        let offset = src_pos.x.abs();
+        dest_pos.x += offset;
+        size.x -= offset;
+        src_pos.x = 0.0;
+    }
+    if src_pos.y < 0.0 {
+        let offset = src_pos.y.abs();
+        dest_pos.y += offset;
+        size.y -= offset;
+        src_pos.y = 0.0;
+    }
 
-    for (ri, row) in image.chunks(stride as usize).enumerate() {
-        for (i, color) in row.chunks(4).take(src_width as usize).enumerate() {
-            let i = i as isize;
-            let x = i % src_width;
-            if x >= width {
-                break;
-            }
+    // Account for src_pos being greater than src_size
+    if src_pos.x >= src.size.x || src_pos.y >= src.size.y {
+        return;
+    }
 
+    // Adjust the size to prevent wrapping
+    if src_pos.x + size.x > src.size.x {
+        size.x -= src_pos.x + size.x - src.size.x;
+        if size.x <= 0.0 {
+            return;
+        }
+    }
+
+    // Bail early when the dest_pos is outside of the dest
+    let lower_right = dest_pos + size;
+    if dest_pos.x > dest.size.x
+        || dest_pos.y > dest.size.y
+        || lower_right.x < 0.0
+        || lower_right.y < 0.0
+    {
+        return;
+    }
+
+    let src_index = (src_pos.y * src.size.x + src_pos.x) as usize * 4;
+    let slice = &src.data[src_index..];
+    let rows = slice.chunks(src.size.x as usize * 4).take(size.y as usize);
+
+    let dest_x = dest_pos.x as isize;
+    let dest_y = dest_pos.y as isize;
+    let dest_width = dest.size.x as isize;
+    let dest_height = dest.size.y as isize;
+
+    for (y, row) in rows.enumerate() {
+        for (x, color) in row.chunks_exact(4).take(size.x as usize).enumerate() {
             if color[3] == 0xff {
-                let x = x + dst_pos.x as isize;
-                let y = i / src_width + dst_pos.y as isize + ri as isize;
+                let x = x as isize + dest_x;
+                let y = y as isize + dest_y;
 
-                if y >= height {
+                // Early bail when drawing below destination image
+                if y >= dest_height as isize {
                     return;
                 }
 
-                if x >= 0 && x < width && y >= 0 {
-                    let index = ((y * width + x) * 4) as usize;
-                    frame[index..index + 4].copy_from_slice(color);
+                if x >= 0 && x < dest_width && y >= 0 {
+                    let index = ((y * dest_width + x) * 4) as usize;
+                    dest.data[index..index + 4].copy_from_slice(color);
                 }
             }
         }
