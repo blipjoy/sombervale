@@ -64,8 +64,9 @@ pub(crate) fn register_systems(world: &World) {
 fn world_to_screen(pos: Vec3, size: Vec2, viewport: Vec2) -> Vec2 {
     let x = pos.x - size.x / 2.0;
     let y = HEIGHT as f32 - (pos.z + size.y);
+    let pos = Vec2::new(x, y) - viewport;
 
-    Vec2::new(x, y) - viewport
+    Vec2::new(pos.x.floor(), pos.y.floor())
 }
 
 fn draw_tilemap(
