@@ -68,7 +68,7 @@ impl Controls {
         // W = 17
         if key.scancode == 17 {
             if key.state == ElementState::Pressed {
-                self.walk = Walk::Walk(dir | Direction::UP);
+                self.walk = Walk::Walk((dir - Direction::DOWN) | Direction::UP);
             } else {
                 self.walk = Walk::Walk(dir - Direction::UP);
             }
@@ -76,7 +76,7 @@ impl Controls {
         // A = 30
         else if key.scancode == 30 {
             if key.state == ElementState::Pressed {
-                self.walk = Walk::Walk(dir | Direction::LEFT);
+                self.walk = Walk::Walk((dir - Direction::RIGHT) | Direction::LEFT);
             } else {
                 self.walk = Walk::Walk(dir - Direction::LEFT);
             }
@@ -84,7 +84,7 @@ impl Controls {
         // S = 31
         else if key.scancode == 31 {
             if key.state == ElementState::Pressed {
-                self.walk = Walk::Walk(dir | Direction::DOWN);
+                self.walk = Walk::Walk((dir - Direction::UP) | Direction::DOWN);
             } else {
                 self.walk = Walk::Walk(dir - Direction::DOWN);
             }
@@ -92,7 +92,7 @@ impl Controls {
         // D = 32
         else if key.scancode == 32 {
             if key.state == ElementState::Pressed {
-                self.walk = Walk::Walk(dir | Direction::RIGHT);
+                self.walk = Walk::Walk((dir - Direction::LEFT) | Direction::RIGHT);
             } else {
                 self.walk = Walk::Walk(dir - Direction::RIGHT);
             }
@@ -113,19 +113,6 @@ impl Controls {
                 self.current_power = Power::Select;
             } else {
                 self.current_power = Power::NoInput;
-            }
-        }
-
-        // Avoid opposite directions
-        if let Walk::Walk(dir) = &mut self.walk {
-            let up_down = Direction::UP | Direction::DOWN;
-            if *dir & up_down == up_down {
-                *dir -= Direction::UP | Direction::DOWN;
-            }
-
-            let left_right = Direction::LEFT | Direction::RIGHT;
-            if *dir & left_right == left_right {
-                *dir -= Direction::LEFT | Direction::RIGHT;
             }
         }
 
