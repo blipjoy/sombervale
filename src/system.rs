@@ -1,11 +1,12 @@
 use crate::animation::{Animated, BlobAnims, FrogAnims, JeanAnims};
 use crate::component::{
-    Animation, Controls, Follow, Hud, Intro, Position, Random, Sprite, Tilemap, UpdateTime,
-    Velocity, Viewport,
+    Animation, Annihilate, Collision, Controls, Follow, Hud, Intro, Position, Random, Sprite,
+    Tilemap, UpdateTime, Velocity, Viewport,
 };
 use crate::control::{Direction, Power, Walk};
 use crate::image::{blit, ImageViewMut};
 use crate::{HEIGHT, WIDTH};
+use log::debug;
 use pixels::Pixels;
 use shipyard::{
     AllStoragesViewMut, EntitiesViewMut, Get, IntoFastIter, IntoWithId, UniqueView, UniqueViewMut,
@@ -26,8 +27,11 @@ const FROG_THRESHOLD: f32 = 28.0;
 // Jitter for the threshold distance; makes frogs desynchronize slightly
 const FROG_THRESHOLD_JITTER: f32 = 4.0;
 
-// Minimum distance where a frog will begin hopping toward a shadow creature
+// Minimum distance where a frog will begin hopping toward and annihilate a shadow creature
 const FROG_SHADOW_THRESHOLD: f32 = 48.0;
+
+// Most entities have this radius (used for collision detection)
+const ENTITY_RADIUS: f32 = 5.0;
 
 const SCREEN_SIZE: Vec2 = Vec2::new(WIDTH as f32, HEIGHT as f32);
 const BOUNDS_MIN: Vec2 = Vec2::new(48.0, 48.0);
@@ -41,6 +45,8 @@ type FrogStorage<'a> = (
     ViewMut<'a, Follow>,
 );
 
+// TODO: This tuple can store tags for all shadows
+// Remember to update all tuple accesses for this tag
 type ShadowTag<'a> = (View<'a, Animation<BlobAnims>>,);
 
 pub(crate) fn register_systems(world: &World) {
@@ -58,12 +64,14 @@ pub(crate) fn register_systems(world: &World) {
         .with_system(&update_frog_velocity)
         .with_system(&update_blob_velocity)
         .with_system(&update_positions)
+        .with_system(&update_jean_shadow_collision)
         .with_system(&update_intro)
         .with_system(&update_viewport)
         .with_system(&update_animation::<JeanAnims>)
         .with_system(&update_animation::<FrogAnims>)
         .with_system(&update_animation::<BlobAnims>)
         .with_system(&update_hud)
+        .with_system(&cleanup)
         .with_system(&update_time)
         .add_to_world(world)
         .expect("Register systems");
@@ -210,19 +218,30 @@ fn draw_hud(mut pixels: UniqueViewMut<Pixels>, hud: UniqueView<Hud>) {
     }
 }
 
-fn summon_frog(
-    mut entities: EntitiesViewMut,
-    mut controls: UniqueViewMut<Controls>,
-    mut hud: UniqueViewMut<Hud>,
-    mut random: UniqueViewMut<Random>,
-    tag: View<Animation<JeanAnims>>,
-    storage: FrogStorage,
-    intro: Option<UniqueView<Intro>>,
-) {
+fn summon_frog(storages: AllStoragesViewMut) {
     // Do not summon Frogs while Intro is playing
-    if intro.is_some() {
+    if storages.borrow::<UniqueView<Intro>>().is_ok() {
         return;
     }
+
+    // Get all the storages we want to work with
+    let mut entities = storages
+        .borrow::<EntitiesViewMut>()
+        .expect("Needs Entities");
+    let mut controls = storages
+        .borrow::<UniqueViewMut<Controls>>()
+        .expect("Needs Controls");
+    let mut hud = storages.borrow::<UniqueViewMut<Hud>>().expect("Needs HUD");
+    let mut random = storages
+        .borrow::<UniqueViewMut<Random>>()
+        .expect("Needs Random");
+    let tag = storages
+        .borrow::<ViewMut<Animation<JeanAnims>>>()
+        .expect("Needs Animation");
+    let storage = storages.borrow::<FrogStorage>().expect("Needs UpdateTime");
+    let collision = storages
+        .borrow::<UniqueViewMut<Collision>>()
+        .expect("Needs Collision");
 
     // Get Jean's position
     let jean = (&storage.0, &tag)
@@ -235,12 +254,23 @@ fn summon_frog(
     if let (Some((pos, jean_id)), Some(frog_power)) = (jean, hud.frog_power.as_mut()) {
         if controls.0.power() == Power::Use && frog_power.use_power() {
             let angle = random.next_f32_unit() * TAU;
-            let frog = crate::entity::frog(
-                pos.x + angle.cos() * random.next_f32_unit() * FROG_THRESHOLD,
-                pos.y,
-                pos.z + angle.sin() * random.next_f32_unit() * FROG_THRESHOLD,
-                Follow::new(jean_id),
-            );
+
+            // Avoid summoning the Frog inside a collision shape
+            let frog_pos = 'outer: loop {
+                let pos = Vec3::new(
+                    pos.x + angle.cos() * random.next_f32_unit() * FROG_THRESHOLD,
+                    pos.y,
+                    pos.z + angle.sin() * random.next_f32_unit() * FROG_THRESHOLD,
+                );
+                for shape in &collision.shapes {
+                    if shape.circle_intersects(pos, ENTITY_RADIUS) {
+                        continue 'outer;
+                    }
+                }
+                break pos;
+            };
+
+            let frog = crate::entity::frog(frog_pos, Follow::new(jean_id));
 
             entities.add_entity(storage, frog);
         }
@@ -292,45 +322,71 @@ fn update_jean_velocity(
     }
 }
 
-fn update_frog_velocity(
-    mut velocities: ViewMut<Velocity>,
-    mut animations: ViewMut<Animation<FrogAnims>>,
-    mut following: ViewMut<Follow>,
-    positions: View<Position>,
-    shadows: ShadowTag,
-    mut random: UniqueViewMut<Random>,
-    ut: UniqueView<UpdateTime>,
-) {
+fn update_frog_velocity(storages: AllStoragesViewMut) {
     use crate::animation::FrogCurrentAnim::*;
+
+    // Get all the storages we want to work with
+    let mut velocities = storages
+        .borrow::<ViewMut<Velocity>>()
+        .expect("Needs Velocity");
+    let mut animations = storages
+        .borrow::<ViewMut<Animation<FrogAnims>>>()
+        .expect("Needs Animation");
+    let mut following = storages.borrow::<ViewMut<Follow>>().expect("Needs Follow");
+    let positions = storages.borrow::<View<Position>>().expect("Needs Position");
+    let ut = storages
+        .borrow::<UniqueView<UpdateTime>>()
+        .expect("Needs UpdateTime");
 
     let dt = ut.0.elapsed();
     let magnitude = dt.as_secs_f32() / (1.0 / FROG_SPEED);
     let entities = (&mut velocities, &mut animations, &mut following, &positions).fast_iter();
 
-    for (vel, anim, follow, pos) in entities {
+    for (frog_id, (vel, anim, follow, pos)) in entities.with_id() {
         // Get Jean's position
         if let Ok(jean_pos) = positions.get(follow.entity_id) {
             // Position of Jean relative to Frog
             let relative_pos = jean_pos.0 - pos.0;
 
+            let shadows = storages.borrow::<ShadowTag>().expect("Needs ShadowTag");
+
             // Position relative to nearest shadow
-            let nearest_shadow_pos = (&positions, &shadows.0).fast_iter().fold(
-                Vec3::broadcast(f32::INFINITY),
-                |acc, (shadow_pos, _)| {
-                    let relative_pos = shadow_pos.0 - pos.0;
-                    if relative_pos.mag() < acc.mag() {
-                        relative_pos
-                    } else {
-                        acc
-                    }
-                },
-            );
+            let (nearest_shadow_id, nearest_shadow_pos) =
+                (&positions, &shadows.0).fast_iter().with_id().fold(
+                    (None, Vec3::broadcast(f32::INFINITY)),
+                    |acc, (id, (shadow_pos, _))| {
+                        let relative_pos = shadow_pos.0 - pos.0;
+                        if relative_pos.mag() < acc.1.mag() {
+                            (Some(id), relative_pos)
+                        } else {
+                            acc
+                        }
+                    },
+                );
+
+            let nearest_shadow_mag = nearest_shadow_pos.mag();
+            if nearest_shadow_mag <= ENTITY_RADIUS * 2.0 {
+                // Frog has collided with the nearest shadow creature
+                let mut annihilate = storages
+                    .borrow::<UniqueViewMut<Annihilate>>()
+                    .expect("Needs Annihilate");
+
+                debug!("TODO: Increase EXP");
+
+                annihilate.0.push(frog_id);
+                annihilate.0.push(nearest_shadow_id.unwrap());
+                continue;
+            }
 
             // Update the direction only when the Frog is idling
             if anim.0.playing() == IdleLeft || anim.0.playing() == IdleRight {
+                let mut random = storages
+                    .borrow::<UniqueViewMut<Random>>()
+                    .expect("Needs Random");
+
                 let jitter = random.next_f32_unit() * FROG_THRESHOLD_JITTER;
 
-                if nearest_shadow_pos.mag() < FROG_SHADOW_THRESHOLD {
+                if nearest_shadow_mag < FROG_SHADOW_THRESHOLD {
                     // Frog is near a shadow creature
                     let animation = if nearest_shadow_pos.x > 0.0 {
                         HopRight
@@ -408,6 +464,30 @@ fn update_blob_velocity(
     }
 }
 
+fn update_jean_shadow_collision(
+    positions: View<Position>,
+    jean: View<Animation<JeanAnims>>,
+    shadows: ShadowTag,
+    mut annihilate: UniqueViewMut<Annihilate>,
+) {
+    let mut it = (&positions, &jean)
+        .fast_iter()
+        .with_id()
+        .map(|(id, (pos, _))| (id, pos));
+    if let Some((jean_id, jean_pos)) = it.next() {
+        let entities = (&positions, &shadows.0).fast_iter();
+
+        for (shadow_id, (shadow_pos, _)) in entities.with_id() {
+            if (shadow_pos.0 - jean_pos.0).mag() < ENTITY_RADIUS * 2.0 {
+                debug!("TODO: Game Over!");
+
+                annihilate.0.push(jean_id);
+                annihilate.0.push(shadow_id);
+            }
+        }
+    }
+}
+
 fn update_animation<A: Animated + 'static>(
     mut animations: ViewMut<Animation<A>>,
     mut sprite: ViewMut<Sprite>,
@@ -419,11 +499,22 @@ fn update_animation<A: Animated + 'static>(
     }
 }
 
-fn update_positions(mut positions: ViewMut<Position>, velocities: View<Velocity>) {
-    let entities = (&mut positions, &velocities).fast_iter();
+fn update_positions(
+    mut positions: ViewMut<Position>,
+    mut velocities: ViewMut<Velocity>,
+    collision: UniqueView<Collision>,
+) {
+    let entities = (&mut positions, &mut velocities).fast_iter();
 
     for (pos, vel) in entities {
-        // TODO: Collision detection?
+        // Collision detection
+        for shape in &collision.shapes {
+            if shape.circle_intersects(pos.0 + vel.0, ENTITY_RADIUS) {
+                // Stop momentum when collision occurs
+                vel.0 = Vec3::default();
+            }
+        }
+
         pos.0 += vel.0;
     }
 }
@@ -490,6 +581,20 @@ fn update_viewport(
 fn update_hud(mut hud: UniqueViewMut<Hud>, frogs: View<Animation<FrogAnims>>) {
     if let Some(frog_power) = &mut hud.frog_power {
         frog_power.update(frogs.len());
+    }
+}
+
+fn cleanup(mut storages: AllStoragesViewMut) {
+    let mut annihilate = storages
+        .borrow::<UniqueViewMut<Annihilate>>()
+        .expect("Needs Annihilate");
+
+    let mut entity_ids = Vec::new();
+    entity_ids.append(&mut annihilate.0);
+    drop(annihilate);
+
+    for entity_id in entity_ids {
+        storages.delete_entity(entity_id);
     }
 }
 

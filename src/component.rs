@@ -1,5 +1,6 @@
 use crate::animation::Animated;
 use crate::image::Image;
+use crate::map::Rect;
 use crate::power::FrogPower;
 use getrandom::getrandom;
 use randomize::PCG32;
@@ -14,10 +15,15 @@ pub(crate) struct UpdateTime(pub(crate) Instant);
 pub(crate) struct Position(pub(crate) Vec3);
 pub(crate) struct Velocity(pub(crate) Vec3);
 pub(crate) struct Animation<A: Animated>(pub(crate) A);
+pub(crate) struct Annihilate(pub(crate) Vec<EntityId>);
 
 pub(crate) struct Viewport {
     pub(crate) pos: Vec2,
     pub(crate) world_height: f32,
+}
+
+pub(crate) struct Collision {
+    pub(crate) shapes: Vec<Rect>,
 }
 
 pub(crate) struct Tilemap {
@@ -80,12 +86,6 @@ impl Default for Controls {
 impl Default for UpdateTime {
     fn default() -> Self {
         Self(Instant::now())
-    }
-}
-
-impl Position {
-    pub(crate) fn new(x: f32, y: f32, z: f32) -> Self {
-        Self(Vec3::new(x, y, z))
     }
 }
 

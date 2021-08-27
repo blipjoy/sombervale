@@ -10,8 +10,8 @@ pub(crate) struct FrogPower {
 impl FrogPower {
     fn new() -> Self {
         Self {
-            max_level: 3,
-            level: 3,
+            max_level: 1,
+            level: 1,
             cooldown: Duration::from_secs(1),
             start: Instant::now(),
         }

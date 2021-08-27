@@ -1,15 +1,45 @@
-use crate::component::{Tilemap, Viewport};
+use crate::component::{Collision, Tilemap, Viewport};
 use crate::image::{blit, load_image, Image, ImageViewMut};
 use shipyard::World;
 use std::collections::HashMap;
 use std::io::Cursor;
-use tiled::{LayerData, PropertyValue};
-use ultraviolet::Vec2;
+use tiled::{LayerData, ObjectShape, PropertyValue};
+use ultraviolet::{Vec2, Vec3};
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct Rect {
+    pos: Vec2,
+    size: Vec2,
+}
+
+impl Rect {
+    fn new(pos: Vec2, size: Vec2) -> Self {
+        Self { pos, size }
+    }
+
+    fn point_intersects(&self, point: Vec3) -> bool {
+        let lower_right = self.pos + self.size;
+
+        point.x > self.pos.x
+            && point.x < lower_right.x
+            && point.z > self.pos.y
+            && point.z < lower_right.y
+    }
+
+    pub(crate) fn circle_intersects(&self, point: Vec3, radius: f32) -> bool {
+        let mut extended = *self;
+        extended.pos -= Vec2::broadcast(radius);
+        extended.size += Vec2::broadcast(radius * 2.0);
+
+        extended.point_intersects(point)
+    }
+}
 
 pub(crate) fn add_tilemap(world: &mut World, tmx: &str) {
-    let (viewport, layers) = load_tilemap(tmx);
+    let (viewport, collision, layers) = load_tilemap(tmx);
 
     world.add_unique(viewport).expect("Add viewport to world");
+    world.add_unique(collision).expect("Add collision to world");
 
     for layer in layers {
         world.add_entity((layer,));
@@ -17,9 +47,10 @@ pub(crate) fn add_tilemap(world: &mut World, tmx: &str) {
 }
 
 // TODO: This should load object layers, too!
-fn load_tilemap(tmx: &str) -> (Viewport, Vec<Tilemap>) {
+fn load_tilemap(tmx: &str) -> (Viewport, Collision, Vec<Tilemap>) {
     let tmx = tiled::parse(Cursor::new(tmx)).unwrap();
     let mut maps = Vec::new();
+    let mut shapes = Vec::new();
 
     // Don't want to implement features that I don't use
     let tw = tmx.tile_width;
@@ -45,6 +76,24 @@ fn load_tilemap(tmx: &str) -> (Viewport, Vec<Tilemap>) {
 
     let src_size = Vec2::new(tileset_width as f32, tileset_height as f32);
     let src = Image::new(tileset_image, src_size);
+
+    for group in &tmx.object_groups {
+        // TODO: hardcoding collision group name for now
+        if group.name == "Collision" {
+            for object in &group.objects {
+                match &object.shape {
+                    ObjectShape::Rect { width, height } => {
+                        let pos = Vec2::new(object.x, dst_size.y - object.y - object.height);
+                        let size = Vec2::new(*width, *height);
+                        shapes.push(Rect::new(pos, size));
+                    }
+                    shape => {
+                        panic!("Shape not supported: {:?}", shape);
+                    }
+                }
+            }
+        }
+    }
 
     for layer in &tmx.layers {
         if let LayerData::Finite(rows) = &layer.tiles {
@@ -100,8 +149,9 @@ fn load_tilemap(tmx: &str) -> (Viewport, Vec<Tilemap>) {
         pos: Vec2::default(),
         world_height: layer_height as f32,
     };
+    let collision = Collision { shapes };
 
-    (viewport, maps)
+    (viewport, collision, maps)
 }
 
 fn get_parallax(properties: &HashMap<String, PropertyValue>) -> Vec2 {
@@ -121,4 +171,41 @@ fn get_parallax(properties: &HashMap<String, PropertyValue>) -> Vec2 {
     });
 
     Vec2::new(parallax_x, parallax_y)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rect_circle_intersects() {
+        let pos = Vec2::new(3.0, 4.0);
+        let size = Vec2::new(3.0, 3.0);
+        let rect = Rect::new(pos, size);
+
+        let radius = 2.0;
+
+        // Check intersections below the rect
+        assert!(!rect.circle_intersects(Vec3::new(5.0, 0.0, 10.0), radius));
+        assert!(rect.circle_intersects(Vec3::new(5.0, 0.0, 8.0), radius));
+
+        // TODO: Ignore corner intersections for now
+        // // Check intersections to the lower left of rect
+        // let x = dbg!(3.0 - 2.0 * (TAU / 8.0).cos());
+        // let y = dbg!(7.0 + 2.0 * (TAU / 8.0).sin());
+        // assert!(!rect.circle_intersects(Vec3::new(x - 0.01, 0.0, y + 0.01), radius));
+        // assert!(rect.circle_intersects(Vec3::new(x + 0.01, 0.0, y - 0.01), radius));
+
+        // Check intersections to the left of rect
+        assert!(!rect.circle_intersects(Vec3::new(0.0, 0.0, 5.0), radius));
+        assert!(rect.circle_intersects(Vec3::new(2.0, 0.0, 5.0), radius));
+
+        // Check intersections above the rect
+        assert!(!rect.circle_intersects(Vec3::new(5.0, 0.0, 1.0), radius));
+        assert!(rect.circle_intersects(Vec3::new(5.0, 0.0, 3.0), radius));
+
+        // Check intersections to the right of rect
+        assert!(!rect.circle_intersects(Vec3::new(9.0, 0.0, 5.0), radius));
+        assert!(rect.circle_intersects(Vec3::new(7.0, 0.0, 5.0), radius));
+    }
 }

@@ -1,7 +1,7 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
-use crate::component::{Controls, Hud, Intro, Random, UpdateTime};
+use crate::component::{Annihilate, Controls, Hud, Intro, Random, UpdateTime};
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
 use shipyard::{UniqueViewMut, World};
@@ -16,9 +16,9 @@ mod component;
 mod control;
 mod entity;
 mod image;
+mod map;
 mod power;
 mod system;
-mod tilemap;
 
 pub(crate) const WIDTH: u32 = 160;
 pub(crate) const HEIGHT: u32 = 128;
@@ -59,13 +59,16 @@ fn main() -> Result<(), Error> {
     };
     world.add_unique(hud).expect("Add HUD");
 
+    world
+        .add_unique(Annihilate(Vec::new()))
+        .expect("Add Annihilation list");
     world.add_unique(Intro {}).expect("Add Intro");
 
-    tilemap::add_tilemap(&mut world, include_str!("../assets/tilemap.tmx"));
+    map::add_tilemap(&mut world, include_str!("../assets/tilemap.tmx"));
 
     // TODO: Spawn entities through tilemap
-    world.add_entity(entity::jean(406.0, 0.0, 68.0));
-    world.add_entity(entity::blob(480.0, 0.0, 77.0));
+    world.add_entity(entity::jean(ultraviolet::Vec3::new(406.0, 0.0, 100.0)));
+    world.add_entity(entity::blob(ultraviolet::Vec3::new(480.0, 0.0, 87.0)));
 
     system::register_systems(&world);
 
