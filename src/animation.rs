@@ -1,4 +1,6 @@
+use randomize::PCG32;
 use std::time::{Duration, Instant};
+use tiled::PropertyValue;
 
 pub(crate) trait Animated {
     fn animate(&mut self) -> usize;
@@ -98,6 +100,29 @@ pub(crate) enum BlobCurrentAnim {
     IdleLeft,
     BounceRight,
     BounceLeft,
+}
+
+impl BlobCurrentAnim {
+    pub(crate) fn new(random: &mut PCG32, direction: Option<&PropertyValue>) -> Self {
+        direction
+            .map(|prop| match prop {
+                PropertyValue::StringValue(direction) => match direction.as_str() {
+                    "left" => Some(BlobCurrentAnim::IdleLeft),
+                    "right" => Some(BlobCurrentAnim::IdleRight),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .flatten()
+            .unwrap_or_else(|| {
+                // TODO: Produce a random direction
+                if random.next_u32() & 1 == 0 {
+                    BlobCurrentAnim::IdleLeft
+                } else {
+                    BlobCurrentAnim::IdleRight
+                }
+            })
+    }
 }
 
 impl FrogAnims {
@@ -259,9 +284,9 @@ impl Animated for JeanAnims {
 }
 
 impl BlobAnims {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(playing: BlobCurrentAnim) -> Self {
         Self {
-            playing: BlobCurrentAnim::IdleLeft,
+            playing,
             idle_right: Animation::new(vec![Frame::new(0, Duration::from_secs(1))]),
             idle_left: Animation::new(vec![Frame::new(8, Duration::from_secs(1))]),
             bounce_right: Animation::new(vec![

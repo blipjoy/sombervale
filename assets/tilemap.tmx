@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.5" tiledversion="1.7.2" orientation="orthogonal" renderorder="right-down" width="60" height="25" tilewidth="16" tileheight="16" infinite="0" nextlayerid="7" nextobjectid="5">
+<map version="1.5" tiledversion="1.7.2" orientation="orthogonal" renderorder="right-down" width="60" height="25" tilewidth="16" tileheight="16" infinite="0" nextlayerid="8" nextobjectid="22">
  <tileset firstgid="1" name="Sombervale" tilewidth="16" tileheight="16" tilecount="280" columns="14">
   <image source="tileset.png" width="224" height="320"/>
  </tileset>
@@ -46,5 +46,38 @@
   <object id="2" x="0" y="352" width="960" height="48"/>
   <object id="3" x="0" y="280" width="64" height="72"/>
   <object id="4" x="896" y="280" width="64" height="72"/>
+ </objectgroup>
+ <objectgroup id="7" name="Entities">
+  <object id="7" name="Jean" x="396" y="268" width="20" height="32"/>
+  <object id="8" name="Blob" x="459.182" y="298.182" width="25" height="25">
+   <properties>
+    <property name="direction" value="left"/>
+   </properties>
+  </object>
+  <object id="9" name="Blob" x="505.727" y="319.273" width="25" height="25">
+   <properties>
+    <property name="direction" value="left"/>
+   </properties>
+  </object>
+  <object id="10" name="Blob" x="541.318" y="290.773" width="25" height="25"/>
+  <object id="11" name="Blob" x="601.318" y="288.955" width="25" height="25"/>
+  <object id="12" name="Blob" x="614.045" y="309.864" width="25" height="25"/>
+  <object id="13" name="Blob" x="660.409" y="292.409" width="25" height="25"/>
+  <object id="14" name="Blob" x="696.773" y="312.591" width="25" height="25"/>
+  <object id="15" name="Blob" x="792.409" y="290.955" width="25" height="25"/>
+  <object id="16" name="Blob" x="332.955" y="310.045" width="25" height="25">
+   <properties>
+    <property name="direction" value="right"/>
+   </properties>
+  </object>
+  <object id="17" name="Blob" x="290.591" y="291.5" width="25" height="25">
+   <properties>
+    <property name="direction" value="right"/>
+   </properties>
+  </object>
+  <object id="18" name="Blob" x="224.773" y="309.864" width="25" height="25"/>
+  <object id="19" name="Blob" x="192.955" y="286.773" width="25" height="25"/>
+  <object id="20" name="Blob" x="136.591" y="317.318" width="25" height="25"/>
+  <object id="21" name="Blob" x="90.2273" y="292.045" width="25" height="25"/>
  </objectgroup>
 </map>

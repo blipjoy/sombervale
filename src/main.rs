@@ -66,10 +66,6 @@ fn main() -> Result<(), Error> {
 
     map::add_tilemap(&mut world, include_str!("../assets/tilemap.tmx"));
 
-    // TODO: Spawn entities through tilemap
-    world.add_entity(entity::jean(ultraviolet::Vec3::new(406.0, 0.0, 100.0)));
-    world.add_entity(entity::blob(ultraviolet::Vec3::new(480.0, 0.0, 87.0)));
-
     system::register_systems(&world);
 
     event_loop.run(move |event, _, control_flow| {

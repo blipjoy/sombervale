@@ -1,9 +1,10 @@
-use crate::component::{Collision, Tilemap, Viewport};
+use crate::component::{Collision, Random, Tilemap, Viewport};
+use crate::entity;
 use crate::image::{blit, load_image, Image, ImageViewMut};
-use shipyard::World;
+use shipyard::{UniqueViewMut, World};
 use std::collections::HashMap;
 use std::io::Cursor;
-use tiled::{LayerData, ObjectShape, PropertyValue};
+use tiled::{LayerData, Object, ObjectShape, PropertyValue};
 use ultraviolet::{Vec2, Vec3};
 
 #[derive(Copy, Clone, Debug)]
@@ -36,20 +37,7 @@ impl Rect {
 }
 
 pub(crate) fn add_tilemap(world: &mut World, tmx: &str) {
-    let (viewport, collision, layers) = load_tilemap(tmx);
-
-    world.add_unique(viewport).expect("Add viewport to world");
-    world.add_unique(collision).expect("Add collision to world");
-
-    for layer in layers {
-        world.add_entity((layer,));
-    }
-}
-
-// TODO: This should load object layers, too!
-fn load_tilemap(tmx: &str) -> (Viewport, Collision, Vec<Tilemap>) {
     let tmx = tiled::parse(Cursor::new(tmx)).unwrap();
-    let mut maps = Vec::new();
     let mut shapes = Vec::new();
 
     // Don't want to implement features that I don't use
@@ -77,24 +65,19 @@ fn load_tilemap(tmx: &str) -> (Viewport, Collision, Vec<Tilemap>) {
     let src_size = Vec2::new(tileset_width as f32, tileset_height as f32);
     let src = Image::new(tileset_image, src_size);
 
+    // Load all object groups
     for group in &tmx.object_groups {
-        // TODO: hardcoding collision group name for now
-        if group.name == "Collision" {
-            for object in &group.objects {
-                match &object.shape {
-                    ObjectShape::Rect { width, height } => {
-                        let pos = Vec2::new(object.x, dst_size.y - object.y - object.height);
-                        let size = Vec2::new(*width, *height);
-                        shapes.push(Rect::new(pos, size));
-                    }
-                    shape => {
-                        panic!("Shape not supported: {:?}", shape);
-                    }
-                }
+        // TODO: hardcoding group names for now
+        match group.name.as_str() {
+            "Collision" => load_collision_shapes(&mut shapes, dst_size, &group.objects),
+            "Entities" => load_entities(world, dst_size, &group.objects),
+            _ => {
+                panic!("Group name {} is not supported", group.name);
             }
         }
     }
 
+    let mut layers = Vec::new();
     for layer in &tmx.layers {
         if let LayerData::Finite(rows) = &layer.tiles {
             let mut image = Vec::with_capacity((layer_width * layer_height * 4) as usize);
@@ -141,17 +124,19 @@ fn load_tilemap(tmx: &str) -> (Viewport, Collision, Vec<Tilemap>) {
             let parallax = get_parallax(&layer.properties);
             let tilemap = Tilemap { image, parallax };
 
-            maps.push(tilemap);
+            layers.push((tilemap,));
         }
     }
+    world.bulk_add_entity(layers.into_iter());
 
     let viewport = Viewport {
         pos: Vec2::default(),
         world_height: layer_height as f32,
     };
-    let collision = Collision { shapes };
+    world.add_unique(viewport).expect("Add viewport to world");
 
-    (viewport, collision, maps)
+    let collision = Collision { shapes };
+    world.add_unique(collision).expect("Add collision to world");
 }
 
 fn get_parallax(properties: &HashMap<String, PropertyValue>) -> Vec2 {
@@ -171,6 +156,52 @@ fn get_parallax(properties: &HashMap<String, PropertyValue>) -> Vec2 {
     });
 
     Vec2::new(parallax_x, parallax_y)
+}
+
+fn load_collision_shapes(shapes: &mut Vec<Rect>, map_size: Vec2, objects: &[Object]) {
+    for object in objects {
+        match &object.shape {
+            ObjectShape::Rect { width, height } => {
+                assert!((object.width - width).abs() < f32::EPSILON);
+                assert!((object.height - height).abs() < f32::EPSILON);
+
+                let pos = Vec2::new(object.x, map_size.y - object.y - height);
+                let size = Vec2::new(*width, *height);
+                shapes.push(Rect::new(pos, size));
+            }
+            shape => {
+                panic!("Collision shape not supported: {:?}", shape);
+            }
+        }
+    }
+}
+
+fn load_entities(world: &mut World, map_size: Vec2, objects: &[Object]) {
+    for object in objects {
+        match (&object.shape, object.name.as_str()) {
+            (ObjectShape::Rect { width, height }, "Jean") => {
+                assert!((object.width - width).abs() < f32::EPSILON);
+                assert!((object.height - height).abs() < f32::EPSILON);
+
+                let pos = Vec3::new(object.x + width / 2.0, 0.0, map_size.y - object.y - height);
+                world.add_entity(entity::jean(pos));
+            }
+            (ObjectShape::Rect { width, height }, "Blob") => {
+                let mut random = world
+                    .borrow::<UniqueViewMut<Random>>()
+                    .expect("Need random");
+
+                let pos = Vec3::new(object.x + width / 2.0, 0.0, map_size.y - object.y - height);
+                let blob = entity::blob(pos, &object.properties, &mut random.0);
+                drop(random);
+
+                world.add_entity(blob);
+            }
+            (shape, name) => {
+                panic!("Entity shape named {} not supported: {:?}", name, shape);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
