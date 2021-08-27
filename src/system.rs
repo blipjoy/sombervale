@@ -12,7 +12,6 @@ use shipyard::{
     Workload, World,
 };
 use std::f32::consts::TAU;
-use std::f32::INFINITY;
 use std::time::Instant;
 use ultraviolet::{Rotor3, Vec2, Vec3};
 
@@ -31,8 +30,8 @@ const FROG_THRESHOLD_JITTER: f32 = 4.0;
 const FROG_SHADOW_THRESHOLD: f32 = 48.0;
 
 const SCREEN_SIZE: Vec2 = Vec2::new(WIDTH as f32, HEIGHT as f32);
-const BOUNDS_MIN: Vec2 = Vec2::new(32.0, 32.0);
-const BOUNDS_MAX: Vec2 = Vec2::new(WIDTH as f32 - 32.0, HEIGHT as f32 - 32.0);
+const BOUNDS_MIN: Vec2 = Vec2::new(48.0, 48.0);
+const BOUNDS_MAX: Vec2 = Vec2::new(WIDTH as f32 - BOUNDS_MIN.x, HEIGHT as f32 - BOUNDS_MIN.y);
 
 type FrogStorage<'a> = (
     ViewMut<'a, Position>,
@@ -73,9 +72,8 @@ pub(crate) fn register_systems(world: &World) {
 fn world_to_screen(pos: Vec3, size: Vec2, viewport: &Viewport) -> Vec2 {
     let x = pos.x - size.x / 2.0;
     let y = viewport.world_height - (pos.z + size.y);
-    let pos = Vec2::new(x, y) - viewport.pos;
-
-    Vec2::new(pos.x.floor(), pos.y.floor())
+    let viewport_pos = Vec2::new(viewport.pos.x.floor(), viewport.pos.y.floor());
+    Vec2::new(x.floor(), y.floor()) - viewport_pos
 }
 
 fn draw_tilemap(
@@ -94,6 +92,7 @@ fn draw_tilemap(
 
     for (layer,) in (&tilemaps,).fast_iter() {
         let src_pos = viewport.pos * layer.parallax;
+        let src_pos = Vec2::new(src_pos.x.floor(), src_pos.y.floor());
         blit(&mut dest, dest_pos, &layer.image, src_pos, SCREEN_SIZE);
     }
 }
@@ -158,11 +157,7 @@ fn draw_sprite(
     }
 }
 
-fn draw_hud(
-    mut pixels: UniqueViewMut<Pixels>,
-    _viewport: UniqueView<Viewport>,
-    hud: UniqueView<Hud>,
-) {
+fn draw_hud(mut pixels: UniqueViewMut<Pixels>, hud: UniqueView<Hud>) {
     let frame = pixels.get_frame();
 
     // FIXME: Draw Frog Power HUD
@@ -183,6 +178,32 @@ fn draw_hud(
 
                 let index = (y * WIDTH as usize + x) * 4;
                 frame[index..index + 3].copy_from_slice(color);
+            }
+        }
+    }
+
+    #[cfg(feature = "debug-mode")]
+    {
+        use line_drawing::Bresenham;
+
+        const UPPER_LEFT: (isize, isize) = (BOUNDS_MIN.x as isize - 1, BOUNDS_MIN.y as isize - 1);
+        const UPPER_RIGHT: (isize, isize) = (BOUNDS_MAX.x as isize, BOUNDS_MIN.y as isize - 1);
+        const LOWER_LEFT: (isize, isize) = (BOUNDS_MIN.x as isize - 1, BOUNDS_MAX.y as isize);
+        const LOWER_RIGHT: (isize, isize) = (BOUNDS_MAX.x as isize, BOUNDS_MAX.y as isize);
+        const LINES: &[((isize, isize), (isize, isize)); 4] = &[
+            (UPPER_LEFT, UPPER_RIGHT),
+            (UPPER_RIGHT, LOWER_RIGHT),
+            (LOWER_RIGHT, LOWER_LEFT),
+            (LOWER_LEFT, UPPER_LEFT),
+        ];
+
+        const COLOR: &[u8; 4] = &[0, 0xff, 0, 0xff];
+
+        // Draw the viewport boundary box
+        for (start, end) in LINES {
+            for (x, y) in Bresenham::new(*start, *end) {
+                let index = (y as usize * WIDTH as usize + x as usize) * 4;
+                frame[index..index + 4].copy_from_slice(COLOR);
             }
         }
     }
