@@ -12,6 +12,7 @@ use shipyard::{
     Workload, World,
 };
 use std::f32::consts::TAU;
+use std::f32::INFINITY;
 use std::time::Instant;
 use ultraviolet::{Rotor3, Vec2, Vec3};
 
@@ -26,6 +27,9 @@ const FROG_THRESHOLD: f32 = 28.0;
 // Jitter for the threshold distance; makes frogs desynchronize slightly
 const FROG_THRESHOLD_JITTER: f32 = 4.0;
 
+// Minimum distance where a frog will begin hopping toward a shadow creature
+const FROG_SHADOW_THRESHOLD: f32 = 48.0;
+
 const SCREEN_SIZE: Vec2 = Vec2::new(WIDTH as f32, HEIGHT as f32);
 const BOUNDS_MIN: Vec2 = Vec2::new(32.0, 32.0);
 const BOUNDS_MAX: Vec2 = Vec2::new(WIDTH as f32 - 32.0, HEIGHT as f32 - 32.0);
@@ -37,6 +41,8 @@ type FrogStorage<'a> = (
     ViewMut<'a, Animation<FrogAnims>>,
     ViewMut<'a, Follow>,
 );
+
+type ShadowTag<'a> = (View<'a, Animation<BlobAnims>>,);
 
 pub(crate) fn register_systems(world: &World) {
     Workload::builder("draw")
@@ -257,6 +263,7 @@ fn update_frog_velocity(
     mut animations: ViewMut<Animation<FrogAnims>>,
     mut following: ViewMut<Follow>,
     positions: View<Position>,
+    shadows: ShadowTag,
     mut random: UniqueViewMut<Random>,
     ut: UniqueView<UpdateTime>,
 ) {
@@ -272,20 +279,49 @@ fn update_frog_velocity(
             // Position of Jean relative to Frog
             let relative_pos = jean_pos.0 - pos.0;
 
-            // Update the direction only when the Frog is idling
-            // AND it is far away from the target
-            if relative_pos.mag() - random.next_f32_unit() * FROG_THRESHOLD_JITTER > FROG_THRESHOLD
-                && (anim.0.playing() == IdleLeft || anim.0.playing() == IdleRight)
-            {
-                let animation = if relative_pos.x > 0.0 {
-                    HopRight
-                } else {
-                    HopLeft
-                };
-                anim.0.set(animation);
+            // Position relative to nearest shadow
+            let nearest_shadow_pos = (&positions, &shadows.0).fast_iter().fold(
+                Vec3::broadcast(f32::INFINITY),
+                |acc, (shadow_pos, _)| {
+                    let relative_pos = shadow_pos.0 - pos.0;
+                    if relative_pos.mag() < acc.mag() {
+                        relative_pos
+                    } else {
+                        acc
+                    }
+                },
+            );
 
-                let rotor = Rotor3::from_rotation_xz(random.next_f32_ndc() * TAU / 16.0);
-                follow.direction = relative_pos.normalized().rotated_by(rotor);
+            // Update the direction only when the Frog is idling
+            if anim.0.playing() == IdleLeft || anim.0.playing() == IdleRight {
+                let jitter = random.next_f32_unit() * FROG_THRESHOLD_JITTER;
+
+                if nearest_shadow_pos.mag() < FROG_SHADOW_THRESHOLD {
+                    // Frog is near a shadow creature
+                    let animation = if nearest_shadow_pos.x > 0.0 {
+                        HopRight
+                    } else {
+                        HopLeft
+                    };
+                    if anim.0.playing() != animation {
+                        anim.0.set(animation);
+                    }
+
+                    follow.direction = nearest_shadow_pos.normalized();
+                } else if relative_pos.mag() - jitter > FROG_THRESHOLD {
+                    // Frog is not near a shadow creature, but is far away from Jean
+                    let animation = if relative_pos.x > 0.0 {
+                        HopRight
+                    } else {
+                        HopLeft
+                    };
+                    if anim.0.playing() != animation {
+                        anim.0.set(animation);
+                    }
+
+                    let rotor = Rotor3::from_rotation_xz(random.next_f32_ndc() * TAU / 16.0);
+                    follow.direction = relative_pos.normalized().rotated_by(rotor);
+                }
             }
         }
 
