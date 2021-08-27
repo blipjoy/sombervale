@@ -1,15 +1,15 @@
 use crate::animation::{Animated, BlobAnims, FrogAnims, JeanAnims};
 use crate::component::{
-    Animation, Controls, Follow, Hud, Position, Random, Sprite, Tilemap, UpdateTime, Velocity,
-    Viewport,
+    Animation, Controls, Follow, Hud, Intro, Position, Random, Sprite, Tilemap, UpdateTime,
+    Velocity, Viewport,
 };
 use crate::control::{Direction, Power, Walk};
 use crate::image::{blit, ImageViewMut};
 use crate::{HEIGHT, WIDTH};
 use pixels::Pixels;
 use shipyard::{
-    EntitiesViewMut, Get, IntoFastIter, IntoWithId, UniqueView, UniqueViewMut, View, ViewMut,
-    Workload, World,
+    AllStoragesViewMut, EntitiesViewMut, Get, IntoFastIter, IntoWithId, UniqueView, UniqueViewMut,
+    View, ViewMut, Workload, World,
 };
 use std::f32::consts::TAU;
 use std::time::Instant;
@@ -58,6 +58,7 @@ pub(crate) fn register_systems(world: &World) {
         .with_system(&update_frog_velocity)
         .with_system(&update_blob_velocity)
         .with_system(&update_positions)
+        .with_system(&update_intro)
         .with_system(&update_viewport)
         .with_system(&update_animation::<JeanAnims>)
         .with_system(&update_animation::<FrogAnims>)
@@ -216,7 +217,13 @@ fn summon_frog(
     mut random: UniqueViewMut<Random>,
     tag: View<Animation<JeanAnims>>,
     storage: FrogStorage,
+    intro: Option<UniqueView<Intro>>,
 ) {
+    // Do not summon Frogs while Intro is playing
+    if intro.is_some() {
+        return;
+    }
+
     // Get Jean's position
     let jean = (&storage.0, &tag)
         .fast_iter()
@@ -245,8 +252,14 @@ fn update_jean_velocity(
     mut animations: ViewMut<Animation<JeanAnims>>,
     controls: UniqueView<Controls>,
     ut: UniqueView<UpdateTime>,
+    intro: Option<UniqueView<Intro>>,
 ) {
     use crate::animation::JeanCurrentAnim::*;
+
+    // Do not move Jean while Intro is playing
+    if intro.is_some() {
+        return;
+    }
 
     let dt = ut.0.elapsed();
     let magnitude = Vec3::new(dt.as_secs_f32() / (1.0 / JEAN_SPEED), 0.0, 0.0);
@@ -361,8 +374,14 @@ fn update_blob_velocity(
     mut animations: ViewMut<Animation<BlobAnims>>,
     mut random: UniqueViewMut<Random>,
     ut: UniqueView<UpdateTime>,
+    intro: Option<UniqueView<Intro>>,
 ) {
     use crate::animation::BlobCurrentAnim::*;
+
+    // Do not move Blobs while Intro is playing
+    if intro.is_some() {
+        return;
+    }
 
     let dt = ut.0.elapsed();
     let magnitude = dt.as_secs_f32() / (1.0 / BLOB_SPEED);
@@ -409,12 +428,37 @@ fn update_positions(mut positions: ViewMut<Position>, velocities: View<Velocity>
     }
 }
 
+fn update_intro(storages: AllStoragesViewMut) {
+    // Require an Intro
+    if storages.borrow::<UniqueView<Intro>>().is_err() {
+        return;
+    }
+
+    if let Ok(mut viewport) = storages.borrow::<UniqueViewMut<Viewport>>() {
+        // Viewport automation for intro
+        if viewport.pos.x < 128.0 {
+            viewport.pos += Vec2::new(0.2, 0.0);
+        } else if viewport.pos.y < 220.0 {
+            viewport.pos += Vec2::broadcast(0.2);
+        } else {
+            storages.remove_unique::<Intro>().ok();
+        }
+    }
+}
+
 fn update_viewport(
     mut viewport: UniqueViewMut<Viewport>,
     positions: View<Position>,
     sprites: View<Sprite>,
     tag: View<Animation<JeanAnims>>,
+    intro: Option<UniqueView<Intro>>,
 ) {
+    // Do not follow Jean while Intro is playing
+    if intro.is_some() {
+        return;
+    }
+
+    // Viewport follows Jean
     for (pos, sprite, _) in (&positions, &sprites, &tag).fast_iter() {
         let viewport_basis = Viewport {
             pos: Vec2::default(),

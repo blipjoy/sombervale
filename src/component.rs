@@ -41,6 +41,8 @@ pub(crate) struct Hud {
     pub(crate) frog_power: Option<FrogPower>,
 }
 
+pub(crate) struct Intro {}
+
 impl Default for Random {
     fn default() -> Self {
         let mut seed = [0_u8; 16];
