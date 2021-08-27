@@ -34,7 +34,7 @@ const FROG_SHADOW_THRESHOLD: f32 = 48.0;
 const ENTITY_RADIUS: f32 = 5.0;
 
 const SCREEN_SIZE: Vec2 = Vec2::new(WIDTH as f32, HEIGHT as f32);
-const BOUNDS_MIN: Vec2 = Vec2::new(48.0, 48.0);
+const BOUNDS_MIN: Vec2 = Vec2::new(64.0, 48.0);
 const BOUNDS_MAX: Vec2 = Vec2::new(WIDTH as f32 - BOUNDS_MIN.x, HEIGHT as f32 - BOUNDS_MIN.y);
 
 type FrogStorage<'a> = (
