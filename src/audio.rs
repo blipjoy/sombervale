@@ -22,7 +22,11 @@ impl Player {
         let music = Cursor::new(include_bytes!(
             "../cc0/01_-_A.T.M.O.M._-_Nochnoe_Dykhanie_Taigi.ogg"
         ));
-        let sound = sound::Sound::from_ogg_reader(music, SoundSettings::default())?;
+        let music_settings = SoundSettings {
+            default_loop_start: Some(0.0),
+            ..SoundSettings::default()
+        };
+        let sound = sound::Sound::from_ogg_reader(music, music_settings)?;
         let music = manager.add_sound(sound)?;
 
         let jump = Cursor::new(include_bytes!("../assets/jump.ogg"));

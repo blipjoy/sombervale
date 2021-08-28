@@ -100,12 +100,8 @@ fn draw_tilemap(
 
     // Clear screen
     let mut frame = pixels.get_frame();
-    {
-        let mut bg_color = [0x1a, 0x1c, 0x2c, 0xff];
-        bad_color_multiply(&mut bg_color, factor);
-        for pixel in frame.chunks_exact_mut(4) {
-            pixel.copy_from_slice(&bg_color);
-        }
+    for pixel in frame.chunks_exact_mut(4) {
+        pixel.copy_from_slice(&[0, 0, 0, 0]);
     }
 
     let mut dest = ImageViewMut::new(&mut frame, SCREEN_SIZE);
@@ -415,10 +411,17 @@ fn update_frog_velocity(storages: AllStoragesViewMut) {
                     .borrow::<UniqueViewMut<Annihilate>>()
                     .expect("Needs Annihilate");
 
-                debug!("TODO: Increase EXP");
-
                 annihilate.0.push(frog_id);
                 annihilate.0.push(nearest_shadow_id.unwrap());
+
+                // TODO: Here we just increase the max level ...
+                // It would be better to use an experience system!
+                // This function actually does a really bad approximation of an experience system
+                let mut hud = storages.borrow::<UniqueViewMut<Hud>>().expect("Needs HUD");
+                if let Some(frog_power) = hud.frog_power.as_mut() {
+                    frog_power.increase_max_level();
+                }
+
                 continue;
             }
 

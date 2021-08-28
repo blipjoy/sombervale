@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
 pub(crate) struct FrogPower {
+    next_level: usize,
     max_level: usize,
     level: usize,
     cooldown: Duration,
@@ -10,6 +11,7 @@ pub(crate) struct FrogPower {
 impl FrogPower {
     fn new() -> Self {
         Self {
+            next_level: 2,
             max_level: 1,
             level: 1,
             cooldown: Duration::from_secs(3),
@@ -49,6 +51,15 @@ impl FrogPower {
 
     pub(crate) fn max_level(&self) -> usize {
         self.max_level
+    }
+
+    pub(crate) fn increase_max_level(&mut self) {
+        if self.next_level > 0 {
+            self.next_level -= 1;
+        } else {
+            self.max_level += 1;
+            self.next_level = self.max_level * 2;
+        }
     }
 }
 
