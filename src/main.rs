@@ -1,11 +1,12 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
-use crate::component::Controls;
+use crate::component::{Audio, Controls};
 use crate::world::load_world;
+use anyhow::Result;
 use log::error;
-use pixels::{Error, Pixels, SurfaceTexture};
-use shipyard::{AllStoragesViewMut, UniqueViewMut, World};
+use pixels::{Pixels, SurfaceTexture};
+use shipyard::{AllStoragesViewMut, NonSync, UniqueViewMut, World};
 use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, Event, VirtualKeyCode};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -13,6 +14,7 @@ use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
 mod animation;
+mod audio;
 mod component;
 mod control;
 mod entity;
@@ -25,7 +27,7 @@ mod world;
 pub(crate) const WIDTH: u32 = 160;
 pub(crate) const HEIGHT: u32 = 128;
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<()> {
     env_logger::init();
     let event_loop = EventLoop::new();
     let mut input = WinitInputHelper::new();
@@ -50,7 +52,17 @@ fn main() -> Result<(), Error> {
     let world = World::default();
     let storages = world.borrow::<AllStoragesViewMut>().unwrap();
     storages.add_unique(pixels);
+    storages.add_unique_non_sync(Audio::new()?);
     load_world(storages);
+
+    // TODO: Move this somewhere else?
+    {
+        let storages = world.borrow::<AllStoragesViewMut>().unwrap();
+        let mut audio = storages
+            .borrow::<NonSync<UniqueViewMut<Audio>>>()
+            .expect("Needs audio");
+        audio.0.play_music()?;
+    }
 
     system::register_systems(&world);
 

@@ -1,7 +1,10 @@
 use crate::animation::Animated;
+use crate::audio::Player;
+use crate::control;
 use crate::image::Image;
 use crate::map::Rect;
 use crate::power::FrogPower;
+use anyhow::Result;
 use getrandom::getrandom;
 use randomize::PCG32;
 use shipyard::EntityId;
@@ -12,8 +15,9 @@ use ultraviolet::{Vec2, Vec3};
 pub(crate) struct Intro();
 pub(crate) struct Outro(pub(crate) Instant, pub(crate) f32);
 pub(crate) struct Random(pub(crate) PCG32);
-pub(crate) struct Controls(pub(crate) crate::control::Controls);
+pub(crate) struct Controls(pub(crate) control::Controls);
 pub(crate) struct UpdateTime(pub(crate) Instant);
+pub(crate) struct Audio(pub(crate) Player);
 pub(crate) struct Position(pub(crate) Vec3);
 pub(crate) struct Velocity(pub(crate) Vec3);
 pub(crate) struct Animation<A: Animated>(pub(crate) A);
@@ -79,13 +83,19 @@ impl Random {
 
 impl Default for Controls {
     fn default() -> Self {
-        Self(crate::control::Controls::default())
+        Self(control::Controls::default())
     }
 }
 
 impl Default for UpdateTime {
     fn default() -> Self {
         Self(Instant::now())
+    }
+}
+
+impl Audio {
+    pub(crate) fn new() -> Result<Self> {
+        Ok(Self(Player::new()?))
     }
 }
 

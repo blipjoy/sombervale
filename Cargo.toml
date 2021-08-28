@@ -4,14 +4,16 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
+anyhow = "1.0"
 bitflags = "1.3"
 env_logger = "0.9"
 getrandom = "0.2"
+kira = { version = "0.5", default-features = false, features = ["ogg"] }
 log = "0.4"
 pixels = "0.5"
 png-decoder = "0.1"
 randomize = "3.0"
-shipyard = { version = "0.5", default-features = false, features = ["std"] }
+shipyard = { version = "0.5", default-features = false, features = ["std", "thread_local"] }
 tiled = { version = "0.9", default-features = false }
 ultraviolet = "0.8"
 winit = "0.25"
