@@ -1,7 +1,7 @@
 use crate::component::{Collision, Random, Tilemap, Viewport};
 use crate::entity;
 use crate::image::{blit, load_image, Image, ImageViewMut};
-use shipyard::{UniqueViewMut, World};
+use shipyard::{AllStoragesViewMut, UniqueViewMut};
 use std::collections::HashMap;
 use std::io::Cursor;
 use tiled::{LayerData, Object, ObjectShape, PropertyValue};
@@ -36,7 +36,7 @@ impl Rect {
     }
 }
 
-pub(crate) fn add_tilemap(world: &mut World, tmx: &str) {
+pub(crate) fn add_tilemap(mut storages: AllStoragesViewMut, tmx: &str) {
     let tmx = tiled::parse(Cursor::new(tmx)).unwrap();
     let mut shapes = Vec::new();
 
@@ -70,7 +70,7 @@ pub(crate) fn add_tilemap(world: &mut World, tmx: &str) {
         // TODO: hardcoding group names for now
         match group.name.as_str() {
             "Collision" => load_collision_shapes(&mut shapes, dst_size, &group.objects),
-            "Entities" => load_entities(world, dst_size, &group.objects),
+            "Entities" => load_entities(&mut storages, dst_size, &group.objects),
             _ => {
                 panic!("Group name {} is not supported", group.name);
             }
@@ -101,7 +101,7 @@ pub(crate) fn add_tilemap(world: &mut World, tmx: &str) {
                     let dest_pos = Vec2::new(dst_x as f32, dst_y as f32) * tile_size;
                     let src_pos = Vec2::new(x as f32, y as f32) * tile_size;
 
-                    blit(&mut dest, dest_pos, &src, src_pos, tile_size);
+                    blit(&mut dest, dest_pos, &src, src_pos, tile_size, 1.0);
                 }
             }
 
@@ -127,16 +127,16 @@ pub(crate) fn add_tilemap(world: &mut World, tmx: &str) {
             layers.push((tilemap,));
         }
     }
-    world.bulk_add_entity(layers.into_iter());
+    storages.bulk_add_entity(layers.into_iter());
 
     let viewport = Viewport {
         pos: Vec2::default(),
         world_height: layer_height as f32,
     };
-    world.add_unique(viewport).expect("Add viewport to world");
+    storages.add_unique(viewport);
 
     let collision = Collision { shapes };
-    world.add_unique(collision).expect("Add collision to world");
+    storages.add_unique(collision);
 }
 
 fn get_parallax(properties: &HashMap<String, PropertyValue>) -> Vec2 {
@@ -176,7 +176,7 @@ fn load_collision_shapes(shapes: &mut Vec<Rect>, map_size: Vec2, objects: &[Obje
     }
 }
 
-fn load_entities(world: &mut World, map_size: Vec2, objects: &[Object]) {
+fn load_entities(storages: &mut AllStoragesViewMut, map_size: Vec2, objects: &[Object]) {
     for object in objects {
         match (&object.shape, object.name.as_str()) {
             (ObjectShape::Rect { width, height }, "Jean") => {
@@ -184,10 +184,10 @@ fn load_entities(world: &mut World, map_size: Vec2, objects: &[Object]) {
                 assert!((object.height - height).abs() < f32::EPSILON);
 
                 let pos = Vec3::new(object.x + width / 2.0, 0.0, map_size.y - object.y - height);
-                world.add_entity(entity::jean(pos));
+                storages.add_entity(entity::jean(pos));
             }
             (ObjectShape::Rect { width, height }, "Blob") => {
-                let mut random = world
+                let mut random = storages
                     .borrow::<UniqueViewMut<Random>>()
                     .expect("Need random");
 
@@ -195,10 +195,10 @@ fn load_entities(world: &mut World, map_size: Vec2, objects: &[Object]) {
                 let blob = entity::blob(pos, &object.properties, &mut random.0);
                 drop(random);
 
-                world.add_entity(blob);
+                storages.add_entity(blob);
             }
             (ObjectShape::Rect { width, height }, "Fire") => {
-                let mut random = world
+                let mut random = storages
                     .borrow::<UniqueViewMut<Random>>()
                     .expect("Need random");
 
@@ -206,7 +206,7 @@ fn load_entities(world: &mut World, map_size: Vec2, objects: &[Object]) {
                 let fire = entity::fire(pos, &mut random.0);
                 drop(random);
 
-                world.add_entity(fire);
+                storages.add_entity(fire);
             }
             (shape, name) => {
                 panic!("Entity named {} not supported: {:?}", name, shape);

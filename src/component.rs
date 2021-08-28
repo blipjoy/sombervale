@@ -9,6 +9,8 @@ use std::convert::TryInto;
 use std::time::Instant;
 use ultraviolet::{Vec2, Vec3};
 
+pub(crate) struct Intro();
+pub(crate) struct Outro(pub(crate) Instant, pub(crate) f32);
 pub(crate) struct Random(pub(crate) PCG32);
 pub(crate) struct Controls(pub(crate) crate::control::Controls);
 pub(crate) struct UpdateTime(pub(crate) Instant);
@@ -46,8 +48,6 @@ pub(crate) struct Follow {
 pub(crate) struct Hud {
     pub(crate) frog_power: Option<FrogPower>,
 }
-
-pub(crate) struct Intro {}
 
 impl Default for Random {
     fn default() -> Self {

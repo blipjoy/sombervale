@@ -1,10 +1,11 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
-use crate::component::{Annihilate, Controls, Hud, Intro, Random, UpdateTime};
+use crate::component::Controls;
+use crate::world::load_world;
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
-use shipyard::{UniqueViewMut, World};
+use shipyard::{AllStoragesViewMut, UniqueViewMut, World};
 use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, Event, VirtualKeyCode};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -19,6 +20,7 @@ mod image;
 mod map;
 mod power;
 mod system;
+mod world;
 
 pub(crate) const WIDTH: u32 = 160;
 pub(crate) const HEIGHT: u32 = 128;
@@ -45,26 +47,10 @@ fn main() -> Result<(), Error> {
     };
 
     // Populate the world
-    let mut world = World::default();
-
-    world.add_unique(Random::default()).expect("Add random");
-    world.add_unique(pixels).expect("Add pixels");
-    world
-        .add_unique(UpdateTime::default())
-        .expect("Add Update time");
-    world.add_unique(Controls::default()).expect("Add Controls");
-
-    let hud = Hud {
-        frog_power: Some(power::FrogPower::default()),
-    };
-    world.add_unique(hud).expect("Add HUD");
-
-    world
-        .add_unique(Annihilate(Vec::new()))
-        .expect("Add Annihilation list");
-    world.add_unique(Intro {}).expect("Add Intro");
-
-    map::add_tilemap(&mut world, include_str!("../assets/tilemap.tmx"));
+    let world = World::default();
+    let storages = world.borrow::<AllStoragesViewMut>().unwrap();
+    storages.add_unique(pixels);
+    load_world(storages);
 
     system::register_systems(&world);
 

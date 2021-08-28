@@ -1,10 +1,11 @@
 use crate::animation::{Animated, BlobAnims, FireAnims, FrogAnims, JeanAnims};
 use crate::component::{
-    Animation, Annihilate, Collision, Controls, Follow, Hud, Intro, Position, Random, Sprite,
-    Tilemap, UpdateTime, Velocity, Viewport,
+    Animation, Annihilate, Collision, Controls, Follow, Hud, Intro, Outro, Position, Random,
+    Sprite, Tilemap, UpdateTime, Velocity, Viewport,
 };
 use crate::control::{Direction, Power, Walk};
-use crate::image::{blit, ImageViewMut};
+use crate::image::{bad_color_multiply, blit, ImageViewMut};
+use crate::world::load_world;
 use crate::{HEIGHT, WIDTH};
 use log::debug;
 use pixels::Pixels;
@@ -13,7 +14,7 @@ use shipyard::{
     View, ViewMut, Workload, World,
 };
 use std::f32::consts::TAU;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use ultraviolet::{Rotor3, Vec2, Vec3};
 
 // Speeds are in pixels per second
@@ -37,6 +38,8 @@ const SCREEN_SIZE: Vec2 = Vec2::new(WIDTH as f32, HEIGHT as f32);
 const BOUNDS_MIN: Vec2 = Vec2::new(64.0, 48.0);
 const BOUNDS_MAX: Vec2 = Vec2::new(WIDTH as f32 - BOUNDS_MIN.x, HEIGHT as f32 - BOUNDS_MIN.y);
 
+const OUTRO_TIME: Duration = Duration::from_secs(2);
+
 type FrogStorage<'a> = (
     ViewMut<'a, Position>,
     ViewMut<'a, Velocity>,
@@ -44,10 +47,6 @@ type FrogStorage<'a> = (
     ViewMut<'a, Animation<FrogAnims>>,
     ViewMut<'a, Follow>,
 );
-
-// TODO: This tuple can store tags for all shadows
-// Remember to update all tuple accesses for this tag
-type ShadowTag<'a> = (View<'a, Animation<BlobAnims>>,);
 
 pub(crate) fn register_systems(world: &World) {
     Workload::builder("draw")
@@ -72,6 +71,7 @@ pub(crate) fn register_systems(world: &World) {
         .with_system(&update_animation::<BlobAnims>)
         .with_system(&update_animation::<FireAnims>)
         .with_system(&update_hud)
+        .with_system(&update_outro)
         .with_system(&cleanup)
         .with_system(&update_time)
         .add_to_world(world)
@@ -90,11 +90,22 @@ fn draw_tilemap(
     mut pixels: UniqueViewMut<Pixels>,
     viewport: UniqueView<Viewport>,
     tilemaps: View<Tilemap>,
+    outro: Option<UniqueView<Outro>>,
 ) {
+    let factor = if let Some(outro) = outro {
+        outro.1
+    } else {
+        1.0
+    };
+
     // Clear screen
     let mut frame = pixels.get_frame();
-    for pixel in frame.chunks_exact_mut(4) {
-        pixel.copy_from_slice(&[0x1a, 0x1c, 0x2c, 0xff]);
+    {
+        let mut bg_color = [0x1a, 0x1c, 0x2c, 0xff];
+        bad_color_multiply(&mut bg_color, factor);
+        for pixel in frame.chunks_exact_mut(4) {
+            pixel.copy_from_slice(&bg_color);
+        }
     }
 
     let mut dest = ImageViewMut::new(&mut frame, SCREEN_SIZE);
@@ -103,7 +114,14 @@ fn draw_tilemap(
     for (layer,) in (&tilemaps,).fast_iter() {
         let src_pos = viewport.pos * layer.parallax;
         let src_pos = Vec2::new(src_pos.x.floor(), src_pos.y.floor());
-        blit(&mut dest, dest_pos, &layer.image, src_pos, SCREEN_SIZE);
+        blit(
+            &mut dest,
+            dest_pos,
+            &layer.image,
+            src_pos,
+            SCREEN_SIZE,
+            factor,
+        );
     }
 }
 
@@ -112,7 +130,13 @@ fn draw_sprite(
     viewport: UniqueView<Viewport>,
     positions: View<Position>,
     sprites: View<Sprite>,
+    outro: Option<UniqueView<Outro>>,
 ) {
+    let factor = if let Some(outro) = outro {
+        outro.1
+    } else {
+        1.0
+    };
     let mut frame = pixels.get_frame();
 
     // Create a single ImageViewMut that is shared over all sprites when debug mode is disabled
@@ -136,7 +160,14 @@ fn draw_sprite(
         let mut dest = ImageViewMut::new(&mut frame, SCREEN_SIZE);
 
         // Copy source image to destination frame
-        blit(&mut dest, dest_pos, &sprite.image, src_pos, frame_size);
+        blit(
+            &mut dest,
+            dest_pos,
+            &sprite.image,
+            src_pos,
+            frame_size,
+            factor,
+        );
 
         // DEBUG DRAWING
         #[cfg(feature = "debug-mode")]
@@ -167,13 +198,23 @@ fn draw_sprite(
     }
 }
 
-fn draw_hud(mut pixels: UniqueViewMut<Pixels>, hud: UniqueView<Hud>) {
+fn draw_hud(
+    mut pixels: UniqueViewMut<Pixels>,
+    hud: UniqueView<Hud>,
+    outro: Option<UniqueView<Outro>>,
+) {
     let frame = pixels.get_frame();
 
     // FIXME: Draw Frog Power HUD
     if let Some(frog_power) = &hud.frog_power {
-        let green = &[0x38, 0xb7, 0x64];
-        let gray = &[0x94, 0xb0, 0xc2];
+        let mut green = [0x38, 0xb7, 0x64, 0xff];
+        let mut gray = [0x94, 0xb0, 0xc2, 0xff];
+
+        if let Some(outro) = outro {
+            let factor = outro.1;
+            bad_color_multiply(&mut green, factor);
+            bad_color_multiply(&mut gray, factor);
+        }
 
         // Draw a naive meter
         for y in 5..8 {
@@ -181,13 +222,13 @@ fn draw_hud(mut pixels: UniqueViewMut<Pixels>, hud: UniqueView<Hud>) {
                 // Compute the HUD bar width
                 let ratio = frog_power.level() as f32 / frog_power.max_level() as f32;
                 let color = if (x - 5) as f32 / 20.0 < ratio {
-                    green
+                    &green
                 } else {
-                    gray
+                    &gray
                 };
 
                 let index = (y * WIDTH as usize + x) * 4;
-                frame[index..index + 3].copy_from_slice(color);
+                frame[index..index + 4].copy_from_slice(color);
             }
         }
     }
@@ -349,11 +390,13 @@ fn update_frog_velocity(storages: AllStoragesViewMut) {
             // Position of Jean relative to Frog
             let relative_pos = jean_pos.0 - pos.0;
 
-            let shadows = storages.borrow::<ShadowTag>().expect("Needs ShadowTag");
+            let shadows = storages
+                .borrow::<View<Animation<BlobAnims>>>()
+                .expect("Needs Blobs");
 
             // Position relative to nearest shadow
             let (nearest_shadow_id, nearest_shadow_pos) =
-                (&positions, &shadows.0).fast_iter().with_id().fold(
+                (&positions, &shadows).fast_iter().with_id().fold(
                     (None, Vec3::broadcast(f32::INFINITY)),
                     |acc, (id, (shadow_pos, _))| {
                         let relative_pos = shadow_pos.0 - pos.0;
@@ -465,25 +508,35 @@ fn update_blob_velocity(
     }
 }
 
-fn update_jean_shadow_collision(
-    positions: View<Position>,
-    jean: View<Animation<JeanAnims>>,
-    shadows: ShadowTag,
-    mut annihilate: UniqueViewMut<Annihilate>,
-) {
+fn update_jean_shadow_collision(storages: AllStoragesViewMut) {
+    // Get all the storages we want to work with
+    let positions = storages.borrow::<View<Position>>().expect("Needs Position");
+    let jean = storages
+        .borrow::<View<Animation<JeanAnims>>>()
+        .expect("Needs Jean");
+
     let mut it = (&positions, &jean)
         .fast_iter()
         .with_id()
         .map(|(id, (pos, _))| (id, pos));
     if let Some((jean_id, jean_pos)) = it.next() {
-        let entities = (&positions, &shadows.0).fast_iter();
+        let shadows = storages
+            .borrow::<View<Animation<BlobAnims>>>()
+            .expect("Needs Blobs");
+        let entities = (&positions, &shadows).fast_iter();
 
         for (shadow_id, (shadow_pos, _)) in entities.with_id() {
             if (shadow_pos.0 - jean_pos.0).mag() < ENTITY_RADIUS * 2.0 {
                 debug!("TODO: Game Over!");
 
+                let mut annihilate = storages
+                    .borrow::<UniqueViewMut<Annihilate>>()
+                    .expect("Needs Annihilate");
+
                 annihilate.0.push(jean_id);
                 annihilate.0.push(shadow_id);
+
+                storages.add_unique(Outro(Instant::now(), 1.0));
             }
         }
     }
@@ -582,6 +635,31 @@ fn update_viewport(
 fn update_hud(mut hud: UniqueViewMut<Hud>, frogs: View<Animation<FrogAnims>>) {
     if let Some(frog_power) = &mut hud.frog_power {
         frog_power.update(frogs.len());
+    }
+}
+
+fn update_outro(mut storages: AllStoragesViewMut) {
+    // Require an Outro
+    let mut outro_result = storages.borrow::<UniqueViewMut<Outro>>();
+    if let Ok(ref mut outro) = outro_result {
+        let elapsed = outro.0.elapsed();
+        if elapsed >= OUTRO_TIME {
+            drop(outro_result);
+
+            // Remove everything
+            storages.clear();
+            storages.remove_unique::<Outro>().ok();
+            storages.remove_unique::<Viewport>().ok();
+            storages.remove_unique::<Collision>().ok();
+            storages.remove_unique::<Annihilate>().ok();
+            storages.remove_unique::<Hud>().ok();
+
+            // Reload the map
+            load_world(storages);
+        } else {
+            // Lerp the opacity
+            outro.1 = ((OUTRO_TIME - elapsed).as_secs_f32() / OUTRO_TIME.as_secs_f32()).max(0.0);
+        }
     }
 }
 

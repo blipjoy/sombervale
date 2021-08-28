@@ -35,12 +35,23 @@ pub(crate) fn load_image(png: &[u8]) -> (isize, isize, Vec<u8>) {
     (width, height, image)
 }
 
+pub(crate) fn bad_color_multiply(color: &mut [u8; 4], factor: f32) {
+    fn mult_u8(value: &mut u8, factor: f32) {
+        *value = (*value as f32 * factor) as u8;
+    }
+
+    mult_u8(&mut color[0], factor);
+    mult_u8(&mut color[1], factor);
+    mult_u8(&mut color[2], factor);
+}
+
 pub(crate) fn blit<'dest>(
     dest: &mut ImageViewMut<'dest>,
     mut dest_pos: Vec2,
     src: &Image,
     mut src_pos: Vec2,
     mut size: Vec2,
+    factor: f32,
 ) {
     assert!(size.x <= src.size.x);
     assert!(size.y <= src.size.y);
@@ -106,8 +117,12 @@ pub(crate) fn blit<'dest>(
                 }
 
                 if x >= 0 && x < dest_width && y >= 0 {
+                    let mut factored_color = [0; 4];
+                    factored_color.copy_from_slice(color);
+                    bad_color_multiply(&mut factored_color, factor);
+
                     let index = ((y * dest_width + x) * 4) as usize;
-                    dest.data[index..index + 4].copy_from_slice(color);
+                    dest.data[index..index + 4].copy_from_slice(&factored_color);
                 }
             }
         }
