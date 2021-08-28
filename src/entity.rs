@@ -1,4 +1,4 @@
-use crate::animation::{BlobAnims, BlobCurrentAnim, FrogAnims, JeanAnims};
+use crate::animation::{BlobAnims, BlobCurrentAnim, FireAnims, FrogAnims, JeanAnims};
 use crate::component::{Animation, Follow, Position, Sprite, Velocity};
 use crate::image::{load_image, Image};
 use randomize::PCG32;
@@ -64,4 +64,19 @@ pub(crate) fn blob(
     )));
 
     (pos, vel, sprite, anim)
+}
+
+pub(crate) fn fire(pos: Vec3, random: &mut PCG32) -> (Position, Sprite, Animation<FireAnims>) {
+    let (width, height, image) = load_image(include_bytes!("../assets/fire.png"));
+
+    let image = Image::new(image, Vec2::new(width as f32, height as f32));
+    let pos = Position(pos);
+    let sprite = Sprite {
+        image,
+        frame_height: 32,
+        frame_index: 0,
+    };
+    let anim = Animation(FireAnims::new(random));
+
+    (pos, sprite, anim)
 }

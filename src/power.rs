@@ -12,7 +12,7 @@ impl FrogPower {
         Self {
             max_level: 1,
             level: 1,
-            cooldown: Duration::from_secs(1),
+            cooldown: Duration::from_secs(3),
             start: Instant::now(),
         }
     }

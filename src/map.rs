@@ -197,8 +197,19 @@ fn load_entities(world: &mut World, map_size: Vec2, objects: &[Object]) {
 
                 world.add_entity(blob);
             }
+            (ObjectShape::Rect { width, height }, "Fire") => {
+                let mut random = world
+                    .borrow::<UniqueViewMut<Random>>()
+                    .expect("Need random");
+
+                let pos = Vec3::new(object.x + width / 2.0, 0.0, map_size.y - object.y - height);
+                let fire = entity::fire(pos, &mut random.0);
+                drop(random);
+
+                world.add_entity(fire);
+            }
             (shape, name) => {
-                panic!("Entity shape named {} not supported: {:?}", name, shape);
+                panic!("Entity named {} not supported: {:?}", name, shape);
             }
         }
     }

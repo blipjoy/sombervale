@@ -1,4 +1,4 @@
-use crate::animation::{Animated, BlobAnims, FrogAnims, JeanAnims};
+use crate::animation::{Animated, BlobAnims, FireAnims, FrogAnims, JeanAnims};
 use crate::component::{
     Animation, Annihilate, Collision, Controls, Follow, Hud, Intro, Position, Random, Sprite,
     Tilemap, UpdateTime, Velocity, Viewport,
@@ -70,6 +70,7 @@ pub(crate) fn register_systems(world: &World) {
         .with_system(&update_animation::<JeanAnims>)
         .with_system(&update_animation::<FrogAnims>)
         .with_system(&update_animation::<BlobAnims>)
+        .with_system(&update_animation::<FireAnims>)
         .with_system(&update_hud)
         .with_system(&cleanup)
         .with_system(&update_time)

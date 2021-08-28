@@ -102,27 +102,8 @@ pub(crate) enum BlobCurrentAnim {
     BounceLeft,
 }
 
-impl BlobCurrentAnim {
-    pub(crate) fn new(random: &mut PCG32, direction: Option<&PropertyValue>) -> Self {
-        direction
-            .map(|prop| match prop {
-                PropertyValue::StringValue(direction) => match direction.as_str() {
-                    "left" => Some(BlobCurrentAnim::IdleLeft),
-                    "right" => Some(BlobCurrentAnim::IdleRight),
-                    _ => None,
-                },
-                _ => None,
-            })
-            .flatten()
-            .unwrap_or_else(|| {
-                // TODO: Produce a random direction
-                if random.next_u32() & 1 == 0 {
-                    BlobCurrentAnim::IdleLeft
-                } else {
-                    BlobCurrentAnim::IdleRight
-                }
-            })
-    }
+pub(crate) struct FireAnims {
+    burn: Animation,
 }
 
 impl FrogAnims {
@@ -366,5 +347,50 @@ impl Animated for BlobAnims {
                 }
             }
         }
+    }
+}
+
+impl BlobCurrentAnim {
+    pub(crate) fn new(random: &mut PCG32, direction: Option<&PropertyValue>) -> Self {
+        direction
+            .map(|prop| match prop {
+                PropertyValue::StringValue(direction) => match direction.as_str() {
+                    "left" => Some(BlobCurrentAnim::IdleLeft),
+                    "right" => Some(BlobCurrentAnim::IdleRight),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .flatten()
+            .unwrap_or_else(|| {
+                // TODO: Produce a random direction
+                if random.next_u32() & 1 == 0 {
+                    BlobCurrentAnim::IdleLeft
+                } else {
+                    BlobCurrentAnim::IdleRight
+                }
+            })
+    }
+}
+
+impl FireAnims {
+    pub(crate) fn new(random: &mut PCG32) -> Self {
+        let mut burn = Animation::new(vec![
+            Frame::new(0, Duration::from_millis(30)),
+            Frame::new(1, Duration::from_millis(40)),
+            Frame::new(2, Duration::from_millis(30)),
+            Frame::new(3, Duration::from_millis(50)),
+            Frame::new(4, Duration::from_millis(35)),
+            Frame::new(5, Duration::from_millis(40)),
+        ]);
+        burn.current_index = random.next_u32() as usize % burn.frames.len();
+
+        Self { burn }
+    }
+}
+
+impl Animated for FireAnims {
+    fn animate(&mut self) -> usize {
+        self.burn.update()
     }
 }
