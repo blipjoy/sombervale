@@ -363,7 +363,6 @@ impl BlobCurrentAnim {
             })
             .flatten()
             .unwrap_or_else(|| {
-                // TODO: Produce a random direction
                 if random.next_u32() & 1 == 0 {
                     BlobCurrentAnim::IdleLeft
                 } else {

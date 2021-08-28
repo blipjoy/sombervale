@@ -95,8 +95,7 @@ pub(crate) fn blit<'dest>(
         return;
     }
 
-    // TODO: Use f32::mul_add()
-    let src_index = (src_pos.y * src.size.x + src_pos.x) as usize * 4;
+    let src_index = src_pos.y.mul_add(src.size.x, src_pos.x) as usize * 4;
     let slice = &src.data[src_index..];
     let rows = slice.chunks(src.size.x as usize * 4).take(size.y as usize);
 

@@ -7,7 +7,6 @@ use crate::control::{Direction, Power, Walk};
 use crate::image::{bad_color_multiply, blit, ImageViewMut};
 use crate::world::load_world;
 use crate::{HEIGHT, WIDTH};
-use log::debug;
 use pixels::Pixels;
 use shipyard::{
     AllStoragesViewMut, EntitiesViewMut, Get, IntoFastIter, IntoWithId, NonSync, UniqueView,
@@ -29,7 +28,7 @@ const FROG_THRESHOLD: f32 = 28.0;
 const FROG_THRESHOLD_JITTER: f32 = 4.0;
 
 // Minimum distance where a frog will begin hopping toward and annihilate a shadow creature
-const FROG_SHADOW_THRESHOLD: f32 = 48.0;
+const FROG_SHADOW_THRESHOLD: f32 = 2304.0; // 48 squared
 
 // Most entities have this radius (used for collision detection)
 const ENTITY_RADIUS: f32 = 5.0;
@@ -56,7 +55,6 @@ pub(crate) fn register_systems(world: &World) {
         .add_to_world(world)
         .expect("Register systems");
 
-    // TODO: Add system for summoning frogs
     Workload::builder("update")
         .with_system(&summon_frog)
         .with_system(&update_jean_velocity)
@@ -82,7 +80,8 @@ pub(crate) fn register_systems(world: &World) {
 fn world_to_screen(pos: Vec3, size: Vec2, viewport: &Viewport) -> Vec2 {
     let x = pos.x - size.x / 2.0;
     let y = viewport.world_height - (pos.z + size.y);
-    let viewport_pos = Vec2::new(viewport.pos.x.floor(), viewport.pos.y.floor());
+    let mut viewport_pos = viewport.pos;
+    viewport_pos.apply(f32::floor);
     Vec2::new(x.floor(), y.floor()) - viewport_pos
 }
 
@@ -108,8 +107,8 @@ fn draw_tilemap(
     let dest_pos = Vec2::default();
 
     for (layer,) in (&tilemaps,).fast_iter() {
-        let src_pos = viewport.pos * layer.parallax;
-        let src_pos = Vec2::new(src_pos.x.floor(), src_pos.y.floor());
+        let mut src_pos = viewport.pos * layer.parallax;
+        src_pos.apply(f32::floor);
         blit(
             &mut dest,
             dest_pos,
@@ -296,9 +295,13 @@ fn summon_frog(storages: AllStoragesViewMut) {
             // Avoid summoning the Frog inside a collision shape
             let frog_pos = 'outer: loop {
                 let pos = Vec3::new(
-                    pos.x + angle.cos() * random.next_f32_unit() * FROG_THRESHOLD,
+                    angle
+                        .cos()
+                        .mul_add(random.next_f32_unit() * FROG_THRESHOLD, pos.x),
                     pos.y,
-                    pos.z + angle.sin() * random.next_f32_unit() * FROG_THRESHOLD,
+                    angle
+                        .sin()
+                        .mul_add(random.next_f32_unit() * FROG_THRESHOLD, pos.z),
                 );
                 for shape in &collision.shapes {
                     if shape.circle_intersects(pos, ENTITY_RADIUS) {
@@ -396,7 +399,7 @@ fn update_frog_velocity(storages: AllStoragesViewMut) {
                     (None, Vec3::broadcast(f32::INFINITY)),
                     |acc, (id, (shadow_pos, _))| {
                         let relative_pos = shadow_pos.0 - pos.0;
-                        if relative_pos.mag() < acc.1.mag() {
+                        if relative_pos.mag_sq() < acc.1.mag_sq() {
                             (Some(id), relative_pos)
                         } else {
                             acc
@@ -404,8 +407,8 @@ fn update_frog_velocity(storages: AllStoragesViewMut) {
                     },
                 );
 
-            let nearest_shadow_mag = nearest_shadow_pos.mag();
-            if nearest_shadow_mag <= ENTITY_RADIUS * 2.0 {
+            let nearest_shadow_mag = nearest_shadow_pos.mag_sq();
+            if nearest_shadow_mag <= (ENTITY_RADIUS * 2.0).powf(2.0) {
                 // Frog has collided with the nearest shadow creature
                 let mut annihilate = storages
                     .borrow::<UniqueViewMut<Annihilate>>()
@@ -498,7 +501,7 @@ fn update_blob_velocity(
 
     for (vel, anim) in entities {
         // When not moving, randomly decide on a new direction to bounce
-        if vel.0.mag() < 0.01 && random.next_f32_unit() < 0.01 {
+        if vel.0.mag_sq() < 0.01 && random.next_f32_unit() < 0.01 {
             let angle = random.next_f32_unit() * TAU;
             let rotor = Rotor3::from_rotation_xz(angle);
             vel.0 = Vec3::unit_x().rotated_by(rotor) * magnitude;
@@ -538,9 +541,7 @@ fn update_jean_shadow_collision(storages: AllStoragesViewMut) {
         let entities = (&positions, &shadows).fast_iter();
 
         for (shadow_id, (shadow_pos, _)) in entities.with_id() {
-            if (shadow_pos.0 - jean_pos.0).mag() < ENTITY_RADIUS * 2.0 {
-                debug!("TODO: Game Over!");
-
+            if (shadow_pos.0 - jean_pos.0).mag_sq() < (ENTITY_RADIUS * 2.0).powf(2.0) {
                 let mut annihilate = storages
                     .borrow::<UniqueViewMut<Annihilate>>()
                     .expect("Needs Annihilate");
