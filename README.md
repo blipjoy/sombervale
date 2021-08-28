@@ -4,6 +4,8 @@ Made in 7 days for [Rusty Jam](https://itch.io/jam/rusty-jam) 2021.
 
 ## About
 
+![Sombervale Screen Shot](./img/screenshot.png)
+
 It is dark and spooky in Sombervale park. There are shadow creatures all around you. Run away with <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>.
 
 Your only defense is an imaginary frog that can be summoned with <kbd>space</kbd>. But be careful! You can only summon a frog once every 3 seconds.
