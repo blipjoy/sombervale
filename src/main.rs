@@ -61,7 +61,7 @@ fn main() -> Result<()> {
         let mut audio = storages
             .borrow::<NonSync<UniqueViewMut<Audio>>>()
             .expect("Needs audio");
-        audio.0.play_music()?;
+        audio.0.music()?;
     }
 
     system::register_systems(&world);

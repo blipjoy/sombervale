@@ -60,45 +60,18 @@
     <property name="direction" value="left"/>
    </properties>
   </object>
-  <object id="9" name="Blob" x="658.394" y="366.106" width="25" height="25">
-   <properties>
-    <property name="direction" value="left"/>
-   </properties>
-  </object>
   <object id="10" name="Blob" x="677.652" y="298.773" width="25" height="25"/>
   <object id="11" name="Blob" x="728.652" y="353.788" width="25" height="25"/>
-  <object id="12" name="Blob" x="1204.71" y="305.197" width="25" height="25"/>
-  <object id="13" name="Blob" x="810.076" y="300.743" width="25" height="25"/>
-  <object id="14" name="Blob" x="948.106" y="329.758" width="25" height="25"/>
   <object id="15" name="Blob" x="1042.08" y="316.621" width="25" height="25"/>
-  <object id="16" name="Blob" x="297.621" y="296.045" width="25" height="25">
-   <properties>
-    <property name="direction" value="right"/>
-   </properties>
-  </object>
-  <object id="17" name="Blob" x="305.258" y="373.167" width="25" height="25">
-   <properties>
-    <property name="direction" value="right"/>
-   </properties>
-  </object>
-  <object id="18" name="Blob" x="216.106" y="355.863" width="25" height="25"/>
-  <object id="19" name="Blob" x="192.955" y="286.773" width="25" height="25"/>
-  <object id="20" name="Blob" x="135.925" y="336.985" width="25" height="25"/>
   <object id="21" name="Blob" x="90.2273" y="292.045" width="25" height="25"/>
-  <object id="22" name="Blob" x="1151.77" y="364.924" width="25" height="25"/>
-  <object id="23" name="Blob" x="1283.38" y="369.454" width="25" height="25"/>
   <object id="24" name="Blob" x="365.273" y="307.439" width="25" height="25">
    <properties>
     <property name="direction" value="right"/>
    </properties>
   </object>
-  <object id="25" name="Blob" x="100.5" y="363.167" width="25" height="25"/>
   <object id="26" name="Blob" x="866.5" y="371.334" width="25" height="25"/>
   <object id="27" name="Blob" x="411.5" y="356.166" width="25" height="25"/>
-  <object id="28" name="Blob" x="512.5" y="373.834" width="25" height="25"/>
-  <object id="29" name="Blob" x="995.334" y="373.833" width="25" height="25"/>
   <object id="30" name="Blob" x="571.833" y="362.833" width="25" height="25"/>
-  <object id="31" name="Blob" x="618.5" y="345.5" width="25" height="25"/>
   <object id="53" name="Blob" x="1313.17" y="302.833" width="25" height="25"/>
  </objectgroup>
  <layer id="9" name="Overlay" width="90" height="29">

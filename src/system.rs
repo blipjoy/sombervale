@@ -1,6 +1,6 @@
 use crate::animation::{Animated, BlobAnims, FireAnims, FrogAnims, JeanAnims};
 use crate::component::{
-    Animation, Annihilate, Collision, Controls, Follow, Hud, Intro, Outro, Position, Random,
+    Animation, Annihilate, Audio, Collision, Controls, Follow, Hud, Intro, Outro, Position, Random,
     Sprite, Tilemap, UpdateTime, Velocity, Viewport,
 };
 use crate::control::{Direction, Power, Walk};
@@ -10,8 +10,8 @@ use crate::{HEIGHT, WIDTH};
 use log::debug;
 use pixels::Pixels;
 use shipyard::{
-    AllStoragesViewMut, EntitiesViewMut, Get, IntoFastIter, IntoWithId, UniqueView, UniqueViewMut,
-    View, ViewMut, Workload, World,
+    AllStoragesViewMut, EntitiesViewMut, Get, IntoFastIter, IntoWithId, NonSync, UniqueView,
+    UniqueViewMut, View, ViewMut, Workload, World,
 };
 use std::f32::consts::TAU;
 use std::time::{Duration, Instant};
@@ -427,6 +427,9 @@ fn update_frog_velocity(storages: AllStoragesViewMut) {
                 let mut random = storages
                     .borrow::<UniqueViewMut<Random>>()
                     .expect("Needs Random");
+                let mut audio = storages
+                    .borrow::<NonSync<UniqueViewMut<Audio>>>()
+                    .expect("Needs Audio");
 
                 let jitter = random.next_f32_unit() * FROG_THRESHOLD_JITTER;
 
@@ -439,6 +442,7 @@ fn update_frog_velocity(storages: AllStoragesViewMut) {
                     };
                     if anim.0.playing() != animation {
                         anim.0.set(animation);
+                        audio.0.jump();
                     }
 
                     follow.direction = nearest_shadow_pos.normalized();
@@ -451,6 +455,7 @@ fn update_frog_velocity(storages: AllStoragesViewMut) {
                     };
                     if anim.0.playing() != animation {
                         anim.0.set(animation);
+                        audio.0.jump();
                     }
 
                     let rotor = Rotor3::from_rotation_xz(random.next_f32_ndc() * TAU / 16.0);
@@ -473,6 +478,7 @@ fn update_blob_velocity(
     mut velocities: ViewMut<Velocity>,
     mut animations: ViewMut<Animation<BlobAnims>>,
     mut random: UniqueViewMut<Random>,
+    mut audio: NonSync<UniqueViewMut<Audio>>,
     ut: UniqueView<UpdateTime>,
     intro: Option<UniqueView<Intro>>,
 ) {
@@ -499,7 +505,10 @@ fn update_blob_velocity(
             } else {
                 BounceLeft
             };
-            anim.0.set(animation);
+            if anim.0.playing() != animation {
+                anim.0.set(animation);
+                audio.0.splat();
+            }
         }
 
         if let IdleLeft | IdleRight = anim.0.playing() {
