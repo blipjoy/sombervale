@@ -19,6 +19,6 @@ When a frog and shadow creature collide, they will annihilate each other. The mo
 Tools used:
 
 - [GIMP](https://gimp.org/)
-- [Tiled](https://mapeditor.org/)
+- [Tiled](https://www.mapeditor.org/)
 - [Audacity](https://www.audacityteam.org/)
 - [jsfxr](https://sfxr.me/)
