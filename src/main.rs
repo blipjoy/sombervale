@@ -8,7 +8,7 @@ use log::error;
 use pixels::{Pixels, SurfaceTexture};
 use shipyard::{AllStoragesViewMut, NonSync, UniqueViewMut, World};
 use winit::dpi::LogicalSize;
-use winit::event::{DeviceEvent, Event, VirtualKeyCode};
+use winit::event::{Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
@@ -83,8 +83,8 @@ fn main() -> Result<()> {
         }
 
         // Handle controls
-        if let Event::DeviceEvent {
-            event: DeviceEvent::Key(key),
+        if let Event::WindowEvent {
+            event: WindowEvent::KeyboardInput { input, .. },
             ..
         } = event
         {
@@ -92,7 +92,7 @@ fn main() -> Result<()> {
                 .borrow::<UniqueViewMut<Controls>>()
                 .expect("get pixels");
 
-            controls.0.update(key);
+            controls.0.update(input);
         }
 
         // Handle input events

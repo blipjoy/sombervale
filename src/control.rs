@@ -1,5 +1,5 @@
 use bitflags::bitflags;
-use winit::event::{ElementState, KeyboardInput};
+use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Walk {
@@ -65,49 +65,38 @@ impl Controls {
         })
         .expect("No direction to decode");
 
-        // W = 17
-        if key.scancode == 17 {
+        if let Some(VirtualKeyCode::W) = key.virtual_keycode {
             if key.state == ElementState::Pressed {
                 self.walk = Walk::Walk((dir - Direction::DOWN) | Direction::UP);
             } else {
                 self.walk = Walk::Walk(dir - Direction::UP);
             }
-        }
-        // A = 30
-        else if key.scancode == 30 {
+        } else if let Some(VirtualKeyCode::A) = key.virtual_keycode {
             if key.state == ElementState::Pressed {
                 self.walk = Walk::Walk((dir - Direction::RIGHT) | Direction::LEFT);
             } else {
                 self.walk = Walk::Walk(dir - Direction::LEFT);
             }
-        }
-        // S = 31
-        else if key.scancode == 31 {
+        } else if let Some(VirtualKeyCode::S) = key.virtual_keycode {
             if key.state == ElementState::Pressed {
                 self.walk = Walk::Walk((dir - Direction::UP) | Direction::DOWN);
             } else {
                 self.walk = Walk::Walk(dir - Direction::DOWN);
             }
-        }
-        // D = 32
-        else if key.scancode == 32 {
+        } else if let Some(VirtualKeyCode::D) = key.virtual_keycode {
             if key.state == ElementState::Pressed {
                 self.walk = Walk::Walk((dir - Direction::LEFT) | Direction::RIGHT);
             } else {
                 self.walk = Walk::Walk(dir - Direction::RIGHT);
             }
-        }
-        // Space = 57
-        else if key.scancode == 57 {
+        } else if let Some(VirtualKeyCode::Space) = key.virtual_keycode {
             self.prev_power = self.current_power;
             if key.state == ElementState::Pressed {
                 self.current_power = Power::Use;
             } else {
                 self.current_power = Power::NoInput;
             }
-        }
-        // Tab = 15
-        else if key.scancode == 15 {
+        } else if let Some(VirtualKeyCode::Tab) = key.virtual_keycode {
             self.prev_power = self.current_power;
             if key.state == ElementState::Pressed {
                 self.current_power = Power::Select;
