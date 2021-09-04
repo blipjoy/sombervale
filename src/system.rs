@@ -321,8 +321,9 @@ fn summon_frog(storages: AllStoragesViewMut) {
 
 fn update_jean_velocity(
     mut velocities: ViewMut<Velocity>,
+    mut positions: ViewMut<Position>,
     mut animations: ViewMut<Animation<JeanAnims>>,
-    controls: UniqueView<Controls>,
+    mut controls: UniqueViewMut<Controls>,
     ut: UniqueView<UpdateTime>,
     intro: Option<UniqueView<Intro>>,
 ) {
@@ -335,9 +336,9 @@ fn update_jean_velocity(
 
     let dt = ut.0.elapsed();
     let magnitude = Vec3::new(dt.as_secs_f32() / (1.0 / JEAN_SPEED), 0.0, 0.0);
-    let entities = (&mut velocities, &mut animations).fast_iter();
+    let entities = (&mut velocities, &mut positions, &mut animations).fast_iter();
 
-    for (vel, anim) in entities {
+    for (vel, pos, anim) in entities {
         let (animation, angle) = match controls.0.walk() {
             Walk::Walk(Direction::RIGHT) => (WalkRight, TAU * (0.0 / 8.0)),
             Walk::Walk(Direction::UP_RIGHT) => (WalkRight, TAU * (1.0 / 8.0)),
@@ -360,6 +361,11 @@ fn update_jean_velocity(
         } else {
             // TODO: Friction
             vel.0 = Vec3::default();
+        }
+
+        // Fix viewport jitter when moving diagonally
+        if controls.0.begining_diagonal() {
+            pos.0.apply(f32::floor);
         }
     }
 }
@@ -603,6 +609,10 @@ fn update_intro(storages: AllStoragesViewMut) {
         // Viewport automation for intro
         if viewport.pos.x < 128.0 {
             viewport.pos += Vec2::new(magnitude, 0.0);
+
+            if viewport.pos.x >= 128.0 {
+                viewport.pos.apply(f32::floor);
+            }
         } else if viewport.pos.y < 220.0 {
             viewport.pos += Vec2::broadcast(magnitude);
         } else {

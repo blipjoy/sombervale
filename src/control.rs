@@ -95,7 +95,8 @@ bitflags! {
 
 pub(crate) struct Controls {
     keys: Keys,
-    walk: Walk,
+    prev_walk: Walk,
+    current_walk: Walk,
     prev_power: Power,
     current_power: Power,
 }
@@ -104,14 +105,36 @@ impl Controls {
     pub(crate) fn new() -> Self {
         Self {
             keys: Keys::default(),
-            walk: Walk::NoInput,
+            prev_walk: Walk::NoInput,
+            current_walk: Walk::NoInput,
             prev_power: Power::NoInput,
             current_power: Power::NoInput,
         }
     }
 
+    pub(crate) fn begining_diagonal(&mut self) -> bool {
+        let result = matches!(
+            (self.prev_walk, self.current_walk),
+            (
+                Walk::NoInput
+                    | Walk::Walk(Direction::UP)
+                    | Walk::Walk(Direction::DOWN)
+                    | Walk::Walk(Direction::LEFT)
+                    | Walk::Walk(Direction::RIGHT),
+                Walk::Walk(Direction::UP_LEFT)
+                    | Walk::Walk(Direction::UP_RIGHT)
+                    | Walk::Walk(Direction::DOWN_LEFT)
+                    | Walk::Walk(Direction::DOWN_RIGHT),
+            )
+        );
+
+        self.prev_walk = self.current_walk;
+
+        result
+    }
+
     pub(crate) fn walk(&self) -> Walk {
-        self.walk
+        self.current_walk
     }
 
     pub(crate) fn power(&mut self) -> Power {
@@ -128,12 +151,13 @@ impl Controls {
         self.keys.update(key);
 
         // Reset actions states
-        self.walk = Walk::NoInput;
+        self.prev_walk = self.current_walk;
+        self.current_walk = Walk::NoInput;
         self.prev_power = self.current_power;
         self.current_power = Power::NoInput;
 
         // Translate key states into actions
-        let mut dir = Direction::from_bits(match self.walk {
+        let mut dir = Direction::from_bits(match self.current_walk {
             Walk::NoInput => 0,
             Walk::Walk(dir) => dir.bits,
         })
@@ -141,19 +165,19 @@ impl Controls {
 
         if self.keys.w {
             dir = (dir - Direction::DOWN) | Direction::UP;
-            self.walk = Walk::Walk(dir);
+            self.current_walk = Walk::Walk(dir);
         }
         if self.keys.a {
             dir = (dir - Direction::RIGHT) | Direction::LEFT;
-            self.walk = Walk::Walk(dir);
+            self.current_walk = Walk::Walk(dir);
         }
         if self.keys.s {
             dir = (dir - Direction::UP) | Direction::DOWN;
-            self.walk = Walk::Walk(dir);
+            self.current_walk = Walk::Walk(dir);
         }
         if self.keys.d {
             dir = (dir - Direction::LEFT) | Direction::RIGHT;
-            self.walk = Walk::Walk(dir);
+            self.current_walk = Walk::Walk(dir);
         }
         if self.keys.space {
             self.current_power = Power::Use;
@@ -163,12 +187,12 @@ impl Controls {
         }
 
         // Never end up with Walk::Walk(0)
-        let dir = match self.walk {
+        let dir = match self.current_walk {
             Walk::NoInput => 0,
             Walk::Walk(dir) => dir.bits,
         };
         if dir == 0 {
-            self.walk = Walk::NoInput;
+            self.current_walk = Walk::NoInput;
         }
     }
 }
