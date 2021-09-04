@@ -20,6 +20,7 @@ use ultraviolet::{Rotor3, Vec2, Vec3};
 const JEAN_SPEED: f32 = 60.0;
 const FROG_SPEED: f32 = 180.0;
 const BLOB_SPEED: f32 = 70.0;
+const INTRO_SPEED: f32 = 12.0;
 
 // Max distance where Frog will begin hopping toward Jean
 const FROG_THRESHOLD: f32 = 28.0;
@@ -593,11 +594,17 @@ fn update_intro(storages: AllStoragesViewMut) {
     }
 
     if let Ok(mut viewport) = storages.borrow::<UniqueViewMut<Viewport>>() {
+        let ut = storages
+            .borrow::<UniqueView<UpdateTime>>()
+            .expect("Need UpdateTime");
+        let dt = ut.0.elapsed();
+        let magnitude = dt.as_secs_f32() / (1.0 / INTRO_SPEED);
+
         // Viewport automation for intro
         if viewport.pos.x < 128.0 {
-            viewport.pos += Vec2::new(0.2, 0.0);
+            viewport.pos += Vec2::new(magnitude, 0.0);
         } else if viewport.pos.y < 220.0 {
-            viewport.pos += Vec2::broadcast(0.2);
+            viewport.pos += Vec2::broadcast(magnitude);
         } else {
             storages.remove_unique::<Intro>().ok();
         }
