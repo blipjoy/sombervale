@@ -11,6 +11,7 @@ env_logger = "0.9"
 getrandom = "0.2"
 kira = { version = "0.5", default-features = false, features = ["ogg"] }
 log = "0.4"
+num_enum = "0.5"
 pixels = "0.6"
 png-decoder = "0.1"
 randomize = "3.0"

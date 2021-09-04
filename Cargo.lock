@@ -1692,6 +1692,7 @@ dependencies = [
  "kira",
  "line_drawing",
  "log",
+ "num_enum",
  "pixels",
  "png-decoder",
  "randomize",

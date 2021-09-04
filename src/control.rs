@@ -1,5 +1,33 @@
 use bitflags::bitflags;
-use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
+use num_enum::TryFromPrimitive;
+use std::convert::TryFrom;
+use winit::event::{ElementState, KeyboardInput};
+
+// Key map for Windows and Linux: http://flint.cs.yale.edu/cs422/doc/art-of-asm/pdf/APNDXC.PDF
+#[cfg(not(target_os = "macos"))]
+#[derive(Copy, Clone, Debug, TryFromPrimitive)]
+#[repr(u32)]
+enum KeyMap {
+    W = 17,
+    A = 30,
+    S = 31,
+    D = 32,
+    Space = 57,
+    Tab = 15,
+}
+
+// Keymap for macOS: https://bit.ly/3kThGwO
+#[cfg(target_os = "macos")]
+#[derive(Copy, Clone, Debug, TryFromPrimitive)]
+#[repr(u32)]
+enum KeyMap {
+    W = 13,
+    A = 0,
+    S = 1,
+    D = 2,
+    Space = 49,
+    Tab = 48,
+}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Walk {
@@ -12,6 +40,43 @@ pub(crate) enum Power {
     NoInput,
     Use,
     Select,
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+struct Keys {
+    w: bool,
+    a: bool,
+    s: bool,
+    d: bool,
+    tab: bool,
+    space: bool,
+}
+
+impl Keys {
+    fn update(&mut self, key: KeyboardInput) {
+        match KeyMap::try_from(key.scancode) {
+            Ok(KeyMap::W) => {
+                self.w = key.state == ElementState::Pressed;
+            }
+            Ok(KeyMap::A) => {
+                self.a = key.state == ElementState::Pressed;
+            }
+            Ok(KeyMap::S) => {
+                self.s = key.state == ElementState::Pressed;
+            }
+            Ok(KeyMap::D) => {
+                self.d = key.state == ElementState::Pressed;
+            }
+            Ok(KeyMap::Space) => {
+                self.space = key.state == ElementState::Pressed;
+            }
+            Ok(KeyMap::Tab) => {
+                self.tab = key.state == ElementState::Pressed;
+            }
+            // Ignore everything else
+            _ => {}
+        }
+    }
 }
 
 bitflags! {
@@ -29,6 +94,7 @@ bitflags! {
 }
 
 pub(crate) struct Controls {
+    keys: Keys,
     walk: Walk,
     prev_power: Power,
     current_power: Power,
@@ -37,6 +103,7 @@ pub(crate) struct Controls {
 impl Controls {
     pub(crate) fn new() -> Self {
         Self {
+            keys: Keys::default(),
             walk: Walk::NoInput,
             prev_power: Power::NoInput,
             current_power: Power::NoInput,
@@ -57,52 +124,42 @@ impl Controls {
     }
 
     pub(crate) fn update(&mut self, key: KeyboardInput) {
-        // TODO: KeyboardInput events have strange repeat patterns.
+        // Capture all key states
+        self.keys.update(key);
 
-        let dir = Direction::from_bits(match self.walk {
+        // Reset actions states
+        self.walk = Walk::NoInput;
+        self.prev_power = self.current_power;
+        self.current_power = Power::NoInput;
+
+        // Translate key states into actions
+        let mut dir = Direction::from_bits(match self.walk {
             Walk::NoInput => 0,
             Walk::Walk(dir) => dir.bits,
         })
         .expect("No direction to decode");
 
-        if let Some(VirtualKeyCode::W) = key.virtual_keycode {
-            if key.state == ElementState::Pressed {
-                self.walk = Walk::Walk((dir - Direction::DOWN) | Direction::UP);
-            } else {
-                self.walk = Walk::Walk(dir - Direction::UP);
-            }
-        } else if let Some(VirtualKeyCode::A) = key.virtual_keycode {
-            if key.state == ElementState::Pressed {
-                self.walk = Walk::Walk((dir - Direction::RIGHT) | Direction::LEFT);
-            } else {
-                self.walk = Walk::Walk(dir - Direction::LEFT);
-            }
-        } else if let Some(VirtualKeyCode::S) = key.virtual_keycode {
-            if key.state == ElementState::Pressed {
-                self.walk = Walk::Walk((dir - Direction::UP) | Direction::DOWN);
-            } else {
-                self.walk = Walk::Walk(dir - Direction::DOWN);
-            }
-        } else if let Some(VirtualKeyCode::D) = key.virtual_keycode {
-            if key.state == ElementState::Pressed {
-                self.walk = Walk::Walk((dir - Direction::LEFT) | Direction::RIGHT);
-            } else {
-                self.walk = Walk::Walk(dir - Direction::RIGHT);
-            }
-        } else if let Some(VirtualKeyCode::Space) = key.virtual_keycode {
-            self.prev_power = self.current_power;
-            if key.state == ElementState::Pressed {
-                self.current_power = Power::Use;
-            } else {
-                self.current_power = Power::NoInput;
-            }
-        } else if let Some(VirtualKeyCode::Tab) = key.virtual_keycode {
-            self.prev_power = self.current_power;
-            if key.state == ElementState::Pressed {
-                self.current_power = Power::Select;
-            } else {
-                self.current_power = Power::NoInput;
-            }
+        if self.keys.w {
+            dir = (dir - Direction::DOWN) | Direction::UP;
+            self.walk = Walk::Walk(dir);
+        }
+        if self.keys.a {
+            dir = (dir - Direction::RIGHT) | Direction::LEFT;
+            self.walk = Walk::Walk(dir);
+        }
+        if self.keys.s {
+            dir = (dir - Direction::UP) | Direction::DOWN;
+            self.walk = Walk::Walk(dir);
+        }
+        if self.keys.d {
+            dir = (dir - Direction::LEFT) | Direction::RIGHT;
+            self.walk = Walk::Walk(dir);
+        }
+        if self.keys.space {
+            self.current_power = Power::Use;
+        }
+        if self.keys.tab {
+            self.current_power = Power::Select;
         }
 
         // Never end up with Walk::Walk(0)
