@@ -10,12 +10,12 @@ pub(crate) struct Hud {
 
 pub(crate) struct JeanStats {
     // Experience points
-    pub(crate) max_xp: u32,
-    pub(crate) xp: u32,
+    max_xp: usize,
+    xp: usize,
 
     // Health points
-    pub(crate) max_hp: u32,
-    pub(crate) hp: u32,
+    max_hp: usize,
+    hp: usize,
 }
 
 impl Default for JeanStats {
@@ -53,6 +53,16 @@ impl Hud {
             // Draw XP meter
             let ratio = frog_power.xp() as f32 / frog_power.max_xp() as f32;
             draw_meter(dest, Vec2::new(40.0, 13.0), purple, ratio, factor);
+        }
+    }
+
+    pub(crate) fn increase_xp(&mut self) {
+        if self.jean.xp < self.jean.max_xp {
+            self.jean.xp += 1;
+        } else {
+            self.jean.max_hp += 1;
+            self.jean.max_xp *= 2;
+            self.jean.xp = 0;
         }
     }
 }

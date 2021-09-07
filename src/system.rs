@@ -1,7 +1,7 @@
 use crate::animation::{Animated, BlobAnims, FireAnims, FrogAnims, JeanAnims};
 use crate::component::{
-    Animation, Annihilate, Audio, Collision, Controls, CoordinateSystem, Follow, Intro, Outro,
-    Position, Random, Sprite, Tilemap, UpdateTime, Velocity, Viewport,
+    Animation, Annihilate, Audio, Collision, Controls, CoordinateSystem, Follow, Outro, Position,
+    Random, Sprite, Tilemap, UpdateTime, Velocity, Viewport,
 };
 use crate::control::{Direction, Power, Walk};
 use crate::hud::Hud;
@@ -21,7 +21,6 @@ use ultraviolet::{Rotor3, Vec2, Vec3};
 const JEAN_SPEED: f32 = 60.0;
 const FROG_SPEED: f32 = 180.0;
 const BLOB_SPEED: f32 = 70.0;
-const INTRO_SPEED: f32 = 12.0;
 
 // Max distance where Frog will begin hopping toward Jean
 const FROG_THRESHOLD: f32 = 28.0;
@@ -64,7 +63,6 @@ pub(crate) fn register_systems(world: &World) {
         .with_system(&update_blob_velocity)
         .with_system(&update_positions)
         .with_system(&update_jean_shadow_collision)
-        .with_system(&update_intro)
         .with_system(&update_viewport)
         .with_system(&update_animation::<JeanAnims>)
         .with_system(&update_animation::<FrogAnims>)
@@ -233,11 +231,6 @@ fn draw_hud(
 }
 
 fn summon_frog(storages: AllStoragesViewMut) {
-    // Do not summon Frogs while Intro is playing
-    if storages.borrow::<UniqueView<Intro>>().is_ok() {
-        return;
-    }
-
     // Get all the storages we want to work with
     let mut entities = storages
         .borrow::<EntitiesViewMut>()
@@ -303,14 +296,8 @@ fn update_jean_velocity(
     mut animations: ViewMut<Animation<JeanAnims>>,
     mut controls: UniqueViewMut<Controls>,
     ut: UniqueView<UpdateTime>,
-    intro: Option<UniqueView<Intro>>,
 ) {
     use crate::animation::JeanCurrentAnim::*;
-
-    // Do not move Jean while Intro is playing
-    if intro.is_some() {
-        return;
-    }
 
     let dt = ut.0.elapsed();
     let magnitude = Vec3::new(dt.as_secs_f32() / (1.0 / JEAN_SPEED), 0.0, 0.0);
@@ -402,10 +389,14 @@ fn update_frog_velocity(storages: AllStoragesViewMut) {
                 annihilate.0.push(frog_id);
                 annihilate.0.push(nearest_shadow_id.unwrap());
 
-                // Increase Frog Power XP
                 let mut hud = storages.borrow::<UniqueViewMut<Hud>>().expect("Needs HUD");
+
+                // Increase Jean's XP
+                hud.increase_xp();
+
+                // Increase Frog Power XP
                 if let Some(frog_power) = hud.frog_power.as_mut() {
-                    frog_power.increase_max_xp();
+                    frog_power.increase_xp();
                 }
 
                 continue;
@@ -469,14 +460,8 @@ fn update_blob_velocity(
     mut random: UniqueViewMut<Random>,
     mut audio: NonSync<UniqueViewMut<Audio>>,
     ut: UniqueView<UpdateTime>,
-    intro: Option<UniqueView<Intro>>,
 ) {
     use crate::animation::BlobCurrentAnim::*;
-
-    // Do not move Blobs while Intro is playing
-    if intro.is_some() {
-        return;
-    }
 
     let dt = ut.0.elapsed();
     let magnitude = dt.as_secs_f32() / (1.0 / BLOB_SPEED);
@@ -569,46 +554,12 @@ fn update_positions(
     }
 }
 
-fn update_intro(storages: AllStoragesViewMut) {
-    // Require an Intro
-    if storages.borrow::<UniqueView<Intro>>().is_err() {
-        return;
-    }
-
-    if let Ok(mut viewport) = storages.borrow::<UniqueViewMut<Viewport>>() {
-        let ut = storages
-            .borrow::<UniqueView<UpdateTime>>()
-            .expect("Need UpdateTime");
-        let dt = ut.0.elapsed();
-        let magnitude = dt.as_secs_f32() / (1.0 / INTRO_SPEED);
-
-        // Viewport automation for intro
-        if viewport.pos.x < 128.0 {
-            viewport.pos += Vec2::new(magnitude, 0.0);
-
-            if viewport.pos.x >= 128.0 {
-                viewport.pos.apply(f32::floor);
-            }
-        } else if viewport.pos.y < 220.0 {
-            viewport.pos += Vec2::broadcast(magnitude);
-        } else {
-            storages.remove_unique::<Intro>().ok();
-        }
-    }
-}
-
 fn update_viewport(
     mut viewport: UniqueViewMut<Viewport>,
     positions: View<Position>,
     sprites: View<Sprite>,
     tag: View<Animation<JeanAnims>>,
-    intro: Option<UniqueView<Intro>>,
 ) {
-    // Do not follow Jean while Intro is playing
-    if intro.is_some() {
-        return;
-    }
-
     // Viewport follows Jean
     for (pos, sprite, _) in (&positions, &sprites, &tag).fast_iter() {
         let viewport_basis = Viewport {

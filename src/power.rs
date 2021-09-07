@@ -67,7 +67,7 @@ impl FrogPower {
         self.max_pp
     }
 
-    pub(crate) fn increase_max_xp(&mut self) {
+    pub(crate) fn increase_xp(&mut self) {
         if self.xp < self.max_xp {
             self.xp += 1;
         } else {

@@ -20,7 +20,6 @@ pub(crate) enum CoordinateSystem {
     Screen,
 }
 
-pub(crate) struct Intro();
 pub(crate) struct Outro(pub(crate) Instant, pub(crate) f32);
 pub(crate) struct Random(pub(crate) PCG32);
 pub(crate) struct Controls(pub(crate) control::Controls);
