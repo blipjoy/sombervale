@@ -3,7 +3,6 @@ use crate::audio::Player;
 use crate::control;
 use crate::image::Image;
 use crate::map::Rect;
-use crate::power::FrogPower;
 use anyhow::Result;
 use getrandom::getrandom;
 use randomize::PCG32;
@@ -12,13 +11,22 @@ use std::convert::TryInto;
 use std::time::Instant;
 use ultraviolet::{Vec2, Vec3};
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum CoordinateSystem {
+    /// World coordinates
+    World,
+
+    /// Screen coordinates
+    Screen,
+}
+
 pub(crate) struct Intro();
 pub(crate) struct Outro(pub(crate) Instant, pub(crate) f32);
 pub(crate) struct Random(pub(crate) PCG32);
 pub(crate) struct Controls(pub(crate) control::Controls);
 pub(crate) struct UpdateTime(pub(crate) Instant);
 pub(crate) struct Audio(pub(crate) Player);
-pub(crate) struct Position(pub(crate) Vec3);
+pub(crate) struct Position(pub(crate) Vec3, pub(crate) CoordinateSystem);
 pub(crate) struct Velocity(pub(crate) Vec3);
 pub(crate) struct Animation<A: Animated>(pub(crate) A);
 pub(crate) struct Annihilate(pub(crate) Vec<EntityId>);
@@ -46,11 +54,6 @@ pub(crate) struct Sprite {
 pub(crate) struct Follow {
     pub(crate) entity_id: EntityId,
     pub(crate) direction: Vec3,
-}
-
-#[derive(Default)]
-pub(crate) struct Hud {
-    pub(crate) frog_power: Option<FrogPower>,
 }
 
 impl Default for Random {

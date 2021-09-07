@@ -1,3 +1,4 @@
+use line_drawing::Bresenham;
 use ultraviolet::Vec2;
 
 pub(crate) struct Image {
@@ -124,6 +125,49 @@ pub(crate) fn blit<'dest>(
                     dest.data[index..index + 4].copy_from_slice(&factored_color);
                 }
             }
+        }
+    }
+}
+
+pub(crate) fn rect(
+    dest: &mut ImageViewMut<'_>,
+    pos: Vec2,
+    mut color: [u8; 4],
+    size: Vec2,
+    factor: f32,
+) {
+    bad_color_multiply(&mut color, factor);
+
+    let x = pos.x as usize;
+    let y = pos.y as usize;
+    let w = size.x as usize;
+    let h = size.y as usize;
+
+    for y in y..y + h {
+        for x in x..x + w {
+            let index = (y * dest.size.x as usize + x) * 4;
+            dest.data[index..index + 4].copy_from_slice(&color);
+        }
+    }
+}
+
+pub(crate) fn lines(
+    dest: &mut ImageViewMut<'_>,
+    pos: Vec2,
+    mut color: [u8; 4],
+    lines: &[(Vec2, Vec2)],
+    factor: f32,
+) {
+    bad_color_multiply(&mut color, factor);
+
+    for (start, end) in lines {
+        let start = (start.x as isize, start.y as isize);
+        let end = (end.x as isize, end.y as isize);
+        for (x, y) in Bresenham::new(start, end) {
+            let x = (x + pos.x as isize) as usize;
+            let y = (y + pos.y as isize) as usize;
+            let index = (y * dest.size.x as usize + x) * 4;
+            dest.data[index..index + 4].copy_from_slice(&color);
         }
     }
 }

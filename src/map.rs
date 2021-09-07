@@ -1,7 +1,9 @@
-use crate::component::{Collision, Random, Tilemap, Viewport};
+use crate::component::{Collision, CoordinateSystem, Position, Random, Sprite, Tilemap, Viewport};
 use crate::entity;
+use crate::hud::Hud;
 use crate::image::{blit, load_image, Image, ImageViewMut};
-use shipyard::{AllStoragesViewMut, UniqueViewMut};
+use crate::power::FrogPower;
+use shipyard::{AllStoragesViewMut, UniqueView, UniqueViewMut};
 use std::collections::HashMap;
 use std::io::Cursor;
 use tiled::{LayerData, Object, ObjectShape, PropertyValue};
@@ -179,6 +181,77 @@ fn load_collision_shapes(shapes: &mut Vec<Rect>, map_size: Vec2, objects: &[Obje
 fn load_entities(storages: &mut AllStoragesViewMut, map_size: Vec2, objects: &[Object]) {
     for object in objects {
         match (&object.shape, object.name.as_str()) {
+            (
+                ObjectShape::Rect {
+                    width: _,
+                    height: _,
+                },
+                "HUD",
+            ) => {
+                let entity = match storages.borrow::<UniqueView<Hud>>() {
+                    Err(_) => {
+                        // Create HUD
+                        // TODO: Needs a new intro
+                        // storages.add_unique(Hud::default());
+                        // None
+
+                        // XXX: Create HUD and frog sprite
+                        storages.add_unique(Hud {
+                            frog_power: Some(FrogPower::default()),
+                            ..Default::default()
+                        });
+
+                        let (width, height, image) =
+                            load_image(include_bytes!("../assets/hud.png"));
+                        let image = Image::new(image, Vec2::new(width as f32, height as f32));
+                        let pos = Position(Vec3::new(3.0, 0.0, 13.0), CoordinateSystem::Screen);
+                        let sprite = Sprite {
+                            image,
+                            frame_height: 8,
+                            frame_index: 1,
+                        };
+
+                        Some((pos, sprite))
+                    }
+                    Ok(hud) => {
+                        // Create any optional sprites
+                        if hud.frog_power.is_some() {
+                            eprintln!("Frog power!");
+                            let (width, height, image) =
+                                load_image(include_bytes!("../assets/hud.png"));
+                            let image = Image::new(image, Vec2::new(width as f32, height as f32));
+                            let pos = Position(Vec3::new(3.0, 0.0, 13.0), CoordinateSystem::Screen);
+                            let sprite = Sprite {
+                                image,
+                                frame_height: 8,
+                                frame_index: 1,
+                            };
+
+                            Some((pos, sprite))
+                        } else {
+                            None
+                        }
+                    }
+                };
+
+                if let Some(entity) = entity {
+                    storages.add_entity(entity);
+                }
+
+                // Create sprite for Jean
+                {
+                    let (width, height, image) = load_image(include_bytes!("../assets/hud.png"));
+                    let image = Image::new(image, Vec2::new(width as f32, height as f32));
+                    let pos = Position(Vec3::new(3.0, 0.0, 3.0), CoordinateSystem::Screen);
+                    let sprite = Sprite {
+                        image,
+                        frame_height: 8,
+                        frame_index: 0,
+                    };
+
+                    storages.add_entity((pos, sprite));
+                }
+            }
             (ObjectShape::Rect { width, height }, "Jean") => {
                 assert!((object.width - width).abs() < f32::EPSILON);
                 assert!((object.height - height).abs() < f32::EPSILON);

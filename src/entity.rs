@@ -1,5 +1,5 @@
 use crate::animation::{BlobAnims, BlobCurrentAnim, FireAnims, FrogAnims, JeanAnims};
-use crate::component::{Animation, Follow, Position, Sprite, Velocity};
+use crate::component::{Animation, CoordinateSystem, Follow, Position, Sprite, Velocity};
 use crate::image::{load_image, Image};
 use randomize::PCG32;
 use std::collections::HashMap;
@@ -12,7 +12,7 @@ pub(crate) fn jean(pos: Vec3) -> (Position, Velocity, Sprite, Animation<JeanAnim
     let (width, height, image) = load_image(include_bytes!("../assets/jean.png"));
 
     let image = Image::new(image, Vec2::new(width as f32, height as f32));
-    let pos = Position(pos);
+    let pos = Position(pos, CoordinateSystem::World);
     let vel = Velocity::default();
     let sprite = Sprite {
         image,
@@ -31,7 +31,7 @@ pub(crate) fn frog(
     let (width, height, image) = load_image(include_bytes!("../assets/frog.png"));
 
     let image = Image::new(image, Vec2::new(width as f32, height as f32));
-    let pos = Position(pos);
+    let pos = Position(pos, CoordinateSystem::World);
     let vel = Velocity::default();
     let sprite = Sprite {
         image,
@@ -51,7 +51,7 @@ pub(crate) fn blob(
     let (width, height, image) = load_image(include_bytes!("../assets/blob.png"));
 
     let image = Image::new(image, Vec2::new(width as f32, height as f32));
-    let pos = Position(pos);
+    let pos = Position(pos, CoordinateSystem::World);
     let vel = Velocity::default();
     let sprite = Sprite {
         image,
@@ -70,7 +70,7 @@ pub(crate) fn fire(pos: Vec3, random: &mut PCG32) -> (Position, Sprite, Animatio
     let (width, height, image) = load_image(include_bytes!("../assets/fire.png"));
 
     let image = Image::new(image, Vec2::new(width as f32, height as f32));
-    let pos = Position(pos);
+    let pos = Position(pos, CoordinateSystem::World);
     let sprite = Sprite {
         image,
         frame_height: 32,

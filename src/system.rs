@@ -1,10 +1,11 @@
 use crate::animation::{Animated, BlobAnims, FireAnims, FrogAnims, JeanAnims};
 use crate::component::{
-    Animation, Annihilate, Audio, Collision, Controls, Follow, Hud, Intro, Outro, Position, Random,
-    Sprite, Tilemap, UpdateTime, Velocity, Viewport,
+    Animation, Annihilate, Audio, Collision, Controls, CoordinateSystem, Follow, Intro, Outro,
+    Position, Random, Sprite, Tilemap, UpdateTime, Velocity, Viewport,
 };
 use crate::control::{Direction, Power, Walk};
-use crate::image::{bad_color_multiply, blit, ImageViewMut};
+use crate::hud::Hud;
+use crate::image::{blit, ImageViewMut};
 use crate::world::load_world;
 use crate::{HEIGHT, WIDTH};
 use pixels::Pixels;
@@ -146,7 +147,11 @@ fn draw_sprite(
     for (pos, sprite) in entities {
         // Convert entity position to screen space
         let frame_size = Vec2::new(sprite.image.size().x, sprite.frame_height as f32);
-        let dest_pos = world_to_screen(pos.0, frame_size, &viewport);
+        let dest_pos = if pos.1 == CoordinateSystem::World {
+            world_to_screen(pos.0, frame_size, &viewport)
+        } else {
+            Vec2::new(pos.0.x, pos.0.z)
+        };
 
         // Select the current frame
         let src_pos = Vec2::new(0.0, sprite.frame_index as f32 * sprite.frame_height as f32);
@@ -196,62 +201,33 @@ fn draw_sprite(
 
 fn draw_hud(
     mut pixels: UniqueViewMut<Pixels>,
-    hud: UniqueView<Hud>,
+    hud: Option<UniqueView<Hud>>,
     outro: Option<UniqueView<Outro>>,
 ) {
-    let frame = pixels.get_frame();
+    let mut dest = ImageViewMut::new(pixels.get_frame(), Vec2::new(WIDTH as f32, HEIGHT as f32));
+    let factor = outro.map(|outro| outro.1).unwrap_or(1.0);
 
-    // FIXME: Draw Frog Power HUD
-    if let Some(frog_power) = &hud.frog_power {
-        let mut green = [0x38, 0xb7, 0x64, 0xff];
-        let mut gray = [0x94, 0xb0, 0xc2, 0xff];
+    if let Some(hud) = hud.as_ref() {
+        hud.draw(&mut dest, factor);
 
-        if let Some(outro) = outro {
-            let factor = outro.1;
-            bad_color_multiply(&mut green, factor);
-            bad_color_multiply(&mut gray, factor);
-        }
+        #[cfg(feature = "debug-mode")]
+        {
+            const COLOR: &[u8; 4] = &[0, 0xff, 0, 0xff];
 
-        // Draw a naive meter
-        for y in 5..8 {
-            for x in 5..25 {
-                // Compute the HUD bar width
-                let ratio = frog_power.level() as f32 / frog_power.max_level() as f32;
-                let color = if (x - 5) as f32 / 20.0 < ratio {
-                    &green
-                } else {
-                    &gray
-                };
-
-                let index = (y * WIDTH as usize + x) * 4;
-                frame[index..index + 4].copy_from_slice(color);
-            }
-        }
-    }
-
-    #[cfg(feature = "debug-mode")]
-    {
-        use line_drawing::Bresenham;
-
-        const UPPER_LEFT: (isize, isize) = (BOUNDS_MIN.x as isize - 1, BOUNDS_MIN.y as isize - 1);
-        const UPPER_RIGHT: (isize, isize) = (BOUNDS_MAX.x as isize, BOUNDS_MIN.y as isize - 1);
-        const LOWER_LEFT: (isize, isize) = (BOUNDS_MIN.x as isize - 1, BOUNDS_MAX.y as isize);
-        const LOWER_RIGHT: (isize, isize) = (BOUNDS_MAX.x as isize, BOUNDS_MAX.y as isize);
-        const LINES: &[((isize, isize), (isize, isize)); 4] = &[
-            (UPPER_LEFT, UPPER_RIGHT),
-            (UPPER_RIGHT, LOWER_RIGHT),
-            (LOWER_RIGHT, LOWER_LEFT),
-            (LOWER_LEFT, UPPER_LEFT),
-        ];
-
-        const COLOR: &[u8; 4] = &[0, 0xff, 0, 0xff];
-
-        // Draw the viewport boundary box
-        for (start, end) in LINES {
-            for (x, y) in Bresenham::new(*start, *end) {
-                let index = (y as usize * WIDTH as usize + x as usize) * 4;
-                frame[index..index + 4].copy_from_slice(COLOR);
-            }
+            // Draw the viewport boundary box
+            let lines = [
+                (
+                    BOUNDS_MIN + Vec2::broadcast(-1.0),
+                    Vec2::new(BOUNDS_MAX.x, BOUNDS_MIN.y - 1.0),
+                ),
+                (Vec2::new(BOUNDS_MAX.x, BOUNDS_MIN.y - 1.0), BOUNDS_MAX),
+                (
+                    BOUNDS_MIN + Vec2::broadcast(-1.0),
+                    Vec2::new(BOUNDS_MIN.x - 1.0, BOUNDS_MAX.y),
+                ),
+                (Vec2::new(BOUNDS_MIN.x - 1.0, BOUNDS_MAX.y), BOUNDS_MAX),
+            ];
+            image::lines(dest, Vec2::zero(), COLOR, &lines, factor);
         }
     }
 }
@@ -269,7 +245,7 @@ fn summon_frog(storages: AllStoragesViewMut) {
     let mut controls = storages
         .borrow::<UniqueViewMut<Controls>>()
         .expect("Needs Controls");
-    let mut hud = storages.borrow::<UniqueViewMut<Hud>>().expect("Needs HUD");
+    let hud = storages.borrow::<UniqueViewMut<Hud>>();
     let mut random = storages
         .borrow::<UniqueViewMut<Random>>()
         .expect("Needs Random");
@@ -289,32 +265,34 @@ fn summon_frog(storages: AllStoragesViewMut) {
         .map(|(id, (pos, _))| (pos.0, id));
 
     // TODO: Select the correct power based on HUD
-    if let (Some((pos, jean_id)), Some(frog_power)) = (jean, hud.frog_power.as_mut()) {
-        if controls.0.power() == Power::Use && frog_power.use_power() {
-            let angle = random.next_f32_unit() * TAU;
+    if let Ok(mut hud) = hud {
+        if let (Some((pos, jean_id)), Some(frog_power)) = (jean, hud.frog_power.as_mut()) {
+            if controls.0.power() == Power::Use && frog_power.use_power() {
+                let angle = random.next_f32_unit() * TAU;
 
-            // Avoid summoning the Frog inside a collision shape
-            let frog_pos = 'outer: loop {
-                let pos = Vec3::new(
-                    angle
-                        .cos()
-                        .mul_add(random.next_f32_unit() * FROG_THRESHOLD, pos.x),
-                    pos.y,
-                    angle
-                        .sin()
-                        .mul_add(random.next_f32_unit() * FROG_THRESHOLD, pos.z),
-                );
-                for shape in &collision.shapes {
-                    if shape.circle_intersects(pos, ENTITY_RADIUS) {
-                        continue 'outer;
+                // Avoid summoning the Frog inside a collision shape
+                let frog_pos = 'outer: loop {
+                    let pos = Vec3::new(
+                        angle
+                            .cos()
+                            .mul_add(random.next_f32_unit() * FROG_THRESHOLD, pos.x),
+                        pos.y,
+                        angle
+                            .sin()
+                            .mul_add(random.next_f32_unit() * FROG_THRESHOLD, pos.z),
+                    );
+                    for shape in &collision.shapes {
+                        if shape.circle_intersects(pos, ENTITY_RADIUS) {
+                            continue 'outer;
+                        }
                     }
-                }
-                break pos;
-            };
+                    break pos;
+                };
 
-            let frog = crate::entity::frog(frog_pos, Follow::new(jean_id));
+                let frog = crate::entity::frog(frog_pos, Follow::new(jean_id));
 
-            entities.add_entity(storage, frog);
+                entities.add_entity(storage, frog);
+            }
         }
     }
 }
@@ -424,12 +402,10 @@ fn update_frog_velocity(storages: AllStoragesViewMut) {
                 annihilate.0.push(frog_id);
                 annihilate.0.push(nearest_shadow_id.unwrap());
 
-                // TODO: Here we just increase the max level ...
-                // It would be better to use an experience system!
-                // This function actually does a really bad approximation of an experience system
+                // Increase Frog Power XP
                 let mut hud = storages.borrow::<UniqueViewMut<Hud>>().expect("Needs HUD");
                 if let Some(frog_power) = hud.frog_power.as_mut() {
-                    frog_power.increase_max_level();
+                    frog_power.increase_max_xp();
                 }
 
                 continue;
@@ -662,9 +638,11 @@ fn update_viewport(
     }
 }
 
-fn update_hud(mut hud: UniqueViewMut<Hud>, frogs: View<Animation<FrogAnims>>) {
-    if let Some(frog_power) = &mut hud.frog_power {
-        frog_power.update(frogs.len());
+fn update_hud(mut hud: Option<UniqueViewMut<Hud>>, frogs: View<Animation<FrogAnims>>) {
+    if let Some(hud) = hud.as_mut() {
+        if let Some(frog_power) = &mut hud.frog_power {
+            frog_power.update(frogs.len());
+        }
     }
 }
 

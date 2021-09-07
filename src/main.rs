@@ -18,6 +18,7 @@ mod audio;
 mod component;
 mod control;
 mod entity;
+mod hud;
 mod image;
 mod map;
 mod power;
